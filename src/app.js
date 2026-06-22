@@ -5,6 +5,7 @@ import { createModulePanel, createModuleRegistry } from "./module-framework.js";
 const rackRow = document.querySelector("[data-rack-row]");
 const hpGrid = document.querySelector("[data-hp-grid]");
 const hpReadout = document.querySelector("[data-hp-readout]");
+const powerBus = document.querySelector("[data-power-bus]");
 const statusText = document.querySelector("[data-status-text]");
 const moduleRegistry = createModuleRegistry();
 const graphHost = createAudioGraphHost();
@@ -33,10 +34,38 @@ function createHpGrid(totalHp) {
   hpGrid.replaceChildren(fragment);
 }
 
+function getPowerRailClass(rail) {
+  if (rail.startsWith("+")) {
+    return "bus-lane-positive";
+  }
+
+  if (rail.startsWith("-")) {
+    return "bus-lane-negative";
+  }
+
+  return "bus-lane-ground";
+}
+
+function renderPowerBus(powerRails) {
+  const label = document.createElement("span");
+  label.className = "bus-label";
+  label.textContent = "Power bus";
+
+  const lanes = powerRails.map((rail) => {
+    const lane = document.createElement("span");
+    lane.className = `bus-lane ${getPowerRailClass(rail)}`;
+    lane.textContent = rail;
+    return lane;
+  });
+
+  powerBus.replaceChildren(label, ...lanes);
+}
+
 function renderRack() {
   const registeredModules = moduleRegistry.list();
 
   createHpGrid(rackConfig.totalHp);
+  renderPowerBus(rackConfig.powerRails);
 
   const usedHp = registeredModules.reduce((total, module) => total + module.hp, 0);
   hpReadout.textContent = `${usedHp} / ${rackConfig.totalHp} HP`;

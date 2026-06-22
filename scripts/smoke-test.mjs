@@ -46,6 +46,7 @@ assert.match(netlifyConfig, /publish = "dist"/);
 
 assert.match(indexHtml, /data-rack/);
 assert.match(indexHtml, /data-rack-row/);
+assert.match(indexHtml, /data-power-bus/);
 assert.match(indexHtml, /Placeholder rack shell/);
 assert.match(indexHtml, /\.\/src\/app\.js/);
 assert.match(indexHtml, /data-status-text/);
@@ -53,6 +54,7 @@ assert.match(indexHtml, /data-status-text/);
 assert.match(appSource, /createModuleRegistry/);
 assert.match(appSource, /createAudioGraphHost/);
 assert.match(appSource, /data-hp-readout/);
+assert.match(appSource, /renderPowerBus/);
 assert.match(rackSource, /totalHp: 84/);
 assert.match(rackSource, /powerRails/);
 assert.match(rackSource, /ports/);
