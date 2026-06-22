@@ -189,6 +189,41 @@ h2 {
   padding: 28px 0;
 }
 
+.patch-cable-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 4;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.patch-cable {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 8;
+  filter: drop-shadow(0 7px 4px rgb(0 0 0 / 36%));
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.patch-cable-audio {
+  stroke: var(--accent-red);
+}
+
+.patch-cable-cv {
+  stroke: var(--accent-cyan);
+}
+
+.patch-cable-gate {
+  stroke: var(--accent-yellow);
+}
+
+.patch-cable-preview {
+  stroke-dasharray: 12 10;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
 .module-panel {
   grid-column: span var(--module-hp);
   display: grid;
@@ -321,6 +356,28 @@ h2 {
   box-shadow:
     inset 0 0 0 4px rgb(255 255 255 / 10%),
     0 4px 0 rgb(0 0 0 / 28%);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.jack:focus-visible,
+.jack-patching {
+  box-shadow:
+    inset 0 0 0 4px rgb(255 255 255 / 18%),
+    0 0 0 5px rgb(255 197 56 / 48%),
+    0 4px 0 rgb(0 0 0 / 28%);
+}
+
+.jack-compatible {
+  transform: scale(1.08);
+  box-shadow:
+    inset 0 0 0 4px rgb(255 255 255 / 14%),
+    0 0 0 4px rgb(69 216 207 / 40%),
+    0 4px 0 rgb(0 0 0 / 28%);
+}
+
+.jack-incompatible {
+  opacity: 0.48;
 }
 
 .jack-label {

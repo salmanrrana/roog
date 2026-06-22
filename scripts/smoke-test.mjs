@@ -70,6 +70,7 @@ assert.match(rackSource, /powerRails/);
 assert.match(rackSource, /ports/);
 assert.match(frameworkSource, /canPatchPorts/);
 assert.match(graphHostSource, /registerModule/);
+assert.match(graphHostSource, /connectPorts/);
 
 const registry = createModuleRegistry();
 const sourceModule = registry.register({
@@ -98,6 +99,10 @@ graphHost.registerModule(sourceModule);
 assert.equal(graphHost.registeredModuleCount, 1);
 
 class SmokeAudioContext {
+  constructor() {
+    this.destination = { label: "destination" };
+  }
+
   createOscillator() {
     return {
       type: "sine",
@@ -105,6 +110,9 @@ class SmokeAudioContext {
       detune: { value: 0 },
       connect(target) {
         this.connectedTarget = target;
+      },
+      disconnect(target) {
+        this.disconnectedTarget = target;
       },
       start() {
         this.started = true;
@@ -130,6 +138,9 @@ class SmokeAudioContext {
       },
       connect(target) {
         this.connectedTarget = target;
+      },
+      disconnect(target) {
+        this.disconnectedTarget = target;
       }
     };
   }
@@ -139,6 +150,9 @@ class SmokeAudioContext {
       offset: { value: 0 },
       connect(target) {
         this.connectedTarget = target;
+      },
+      disconnect(target) {
+        this.disconnectedTarget = target;
       },
       start() {
         this.started = true;
@@ -153,6 +167,9 @@ class SmokeAudioContext {
       Q: { value: 0 },
       connect(target) {
         this.connectedTarget = target;
+      },
+      disconnect(target) {
+        this.disconnectedTarget = target;
       }
     };
   }
@@ -289,6 +306,28 @@ assert.equal(canPatchPorts(envelopeCvOut, vcaCvIn), true);
 assert.equal(canPatchPorts(lfoCvOut, envelopeGateIn), false);
 assert.equal(canPatchPorts(vcfAudioOut, vcaAudioIn), true);
 assert.equal(canPatchPorts(vcfAudioOut, vcaCvIn), false);
+
+const patchConnectionId = shapingGraphHost.connectPorts(
+  registeredVcf.id,
+  vcfAudioOut,
+  registeredVca.id,
+  vcaAudioIn
+);
+assert.equal(vcfNodes.output.connectedTarget, vcaNodes.input);
+assert.equal(shapingGraphHost.disconnect(patchConnectionId), true);
+assert.equal(vcfNodes.output.disconnectedTarget, vcaNodes.input);
+
+const outputDefinition = placeholderModules.find(
+  (moduleDefinition) => moduleDefinition.id === "output-placeholder"
+);
+assert.ok(outputDefinition, "Output module should be registered in the rack shell");
+assert.deepEqual(
+  outputDefinition.ports.map((port) => [port.type, port.direction, port.node]),
+  [
+    [signalTypes.audio, portDirections.input, "left"],
+    [signalTypes.audio, portDirections.input, "right"]
+  ]
+);
 
 assert.equal(isPathInsideRoot(path.join(projectRoot, "index.html")), true);
 assert.equal(isPathInsideRoot(path.resolve(projectRoot, "..", "package.json")), false);

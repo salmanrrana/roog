@@ -1,6 +1,8 @@
 export function createAudioGraphHost({ AudioContextClass = globalThis.AudioContext } = {}) {
   let audioContext = null;
   const moduleNodes = new Map();
+  const connections = new Map();
+  let connectionId = 0;
 
   function ensureContext() {
     if (!audioContext) {
@@ -59,6 +61,31 @@ export function createAudioGraphHost({ AudioContextClass = globalThis.AudioConte
       }
 
       sourceNode.connect(targetNode);
+      connectionId += 1;
+
+      const id = `connection-${connectionId}`;
+      connections.set(id, { sourceNode, targetNode });
+      return id;
+    },
+
+    connectPorts(sourceModuleId, sourcePort, targetModuleId, targetPort) {
+      if (!sourcePort.node || !targetPort.node) {
+        throw new Error("Cannot connect ports without Web Audio node metadata");
+      }
+
+      return this.connect(sourceModuleId, sourcePort.node, targetModuleId, targetPort.node);
+    },
+
+    disconnect(connectionIdToRemove) {
+      const connection = connections.get(connectionIdToRemove);
+
+      if (!connection) {
+        return false;
+      }
+
+      connection.sourceNode.disconnect(connection.targetNode);
+      connections.delete(connectionIdToRemove);
+      return true;
     }
   };
 }

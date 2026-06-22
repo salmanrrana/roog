@@ -1,14 +1,20 @@
 import { placeholderModules, rackConfig } from "./rack-shell.js";
 import { createAudioGraphHost } from "./audio-graph-host.js";
-import { createModulePanel, createModuleRegistry } from "./module-framework.js";
+import { canPatchPorts, createModulePanel, createModuleRegistry } from "./module-framework.js";
 
+const rackFrame = document.querySelector(".rack-frame");
 const rackRow = document.querySelector("[data-rack-row]");
 const hpGrid = document.querySelector("[data-hp-grid]");
+const cableLayer = document.querySelector("[data-patch-cable-layer]");
 const hpReadout = document.querySelector("[data-hp-readout]");
 const powerBus = document.querySelector("[data-power-bus]");
 const statusText = document.querySelector("[data-status-text]");
 const moduleRegistry = createModuleRegistry();
 const graphHost = createAudioGraphHost();
+const patches = [];
+let activePatchStart = null;
+let previewPoint = null;
+let patchIdSeed = 0;
 
 placeholderModules.forEach((moduleDefinition) => {
   const registeredModule = moduleRegistry.register(moduleDefinition);
@@ -61,6 +67,269 @@ function renderPowerBus(powerRails) {
   powerBus.replaceChildren(label, ...lanes);
 }
 
+function getPortDescriptor(jack) {
+  const moduleDefinition = moduleRegistry.get(jack.dataset.moduleId);
+  const port = moduleDefinition?.ports.find((candidate) => candidate.id === jack.dataset.portId);
+
+  if (!moduleDefinition || !port) {
+    return null;
+  }
+
+  return {
+    jack,
+    moduleId: moduleDefinition.id,
+    moduleName: moduleDefinition.name,
+    port
+  };
+}
+
+function normalizePatchEndpoints(start, end) {
+  if (canPatchPorts(start.port, end.port)) {
+    return { source: start, target: end };
+  }
+
+  if (canPatchPorts(end.port, start.port)) {
+    return { source: end, target: start };
+  }
+
+  return null;
+}
+
+function getJackPoint(jack) {
+  const jackRect = jack.getBoundingClientRect();
+  const rackRect = rackFrame.getBoundingClientRect();
+
+  return {
+    x: jackRect.left + jackRect.width / 2 - rackRect.left + rackFrame.scrollLeft,
+    y: jackRect.top + jackRect.height / 2 - rackRect.top + rackFrame.scrollTop
+  };
+}
+
+function getCablePath(startPoint, endPoint) {
+  const slack = Math.max(48, Math.abs(endPoint.x - startPoint.x) * 0.38);
+
+  return [
+    `M ${startPoint.x} ${startPoint.y}`,
+    `C ${startPoint.x + slack} ${startPoint.y}`,
+    `${endPoint.x - slack} ${endPoint.y}`,
+    `${endPoint.x} ${endPoint.y}`
+  ].join(" ");
+}
+
+function setPatchStatus(message) {
+  const patchCount = patches.length === 1 ? "1 cable" : `${patches.length} cables`;
+  statusText.textContent = message ?? `${graphHost.registeredModuleCount} modules registered · ${patchCount}`;
+}
+
+function renderCableLayer() {
+  const frameWidth = Math.max(rackFrame.clientWidth, rackRow.scrollWidth);
+  const frameHeight = rackFrame.clientHeight;
+  const cableElements = [];
+
+  cableLayer.setAttribute("viewBox", `0 0 ${frameWidth} ${frameHeight}`);
+  cableLayer.style.width = `${frameWidth}px`;
+  cableLayer.style.height = `${frameHeight}px`;
+
+  patches.forEach((patch) => {
+    if (!patch.source.jack.isConnected || !patch.target.jack.isConnected) {
+      return;
+    }
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.classList.add("patch-cable", `patch-cable-${patch.source.port.type}`);
+    path.dataset.patchId = patch.id;
+    path.setAttribute("d", getCablePath(getJackPoint(patch.source.jack), getJackPoint(patch.target.jack)));
+    path.setAttribute(
+      "aria-label",
+      `${patch.source.moduleName} ${patch.source.port.label} to ${patch.target.moduleName} ${patch.target.port.label}`
+    );
+    cableElements.push(path);
+  });
+
+  if (activePatchStart && previewPoint) {
+    const preview = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    preview.classList.add("patch-cable", "patch-cable-preview", `patch-cable-${activePatchStart.port.type}`);
+    preview.setAttribute("d", getCablePath(getJackPoint(activePatchStart.jack), previewPoint));
+    cableElements.push(preview);
+  }
+
+  cableLayer.replaceChildren(...cableElements);
+}
+
+function clearActivePatch() {
+  activePatchStart?.jack.classList.remove("jack-patching");
+  activePatchStart = null;
+  previewPoint = null;
+  rackRow.querySelectorAll(".jack-compatible, .jack-incompatible").forEach((jack) => {
+    jack.classList.remove("jack-compatible", "jack-incompatible");
+  });
+  renderCableLayer();
+}
+
+function markPatchTargets(start) {
+  rackRow.querySelectorAll(".jack").forEach((jack) => {
+    if (jack === start.jack) {
+      return;
+    }
+
+    const target = getPortDescriptor(jack);
+
+    if (!target) {
+      return;
+    }
+
+    jack.classList.add(normalizePatchEndpoints(start, target) ? "jack-compatible" : "jack-incompatible");
+  });
+}
+
+function connectPatch(start, end) {
+  const endpoints = normalizePatchEndpoints(start, end);
+
+  if (!endpoints) {
+    setPatchStatus("Incompatible patch: signal type or direction does not match");
+    return;
+  }
+
+  try {
+    const connectionId = graphHost.connectPorts(
+      endpoints.source.moduleId,
+      endpoints.source.port,
+      endpoints.target.moduleId,
+      endpoints.target.port
+    );
+
+    patchIdSeed += 1;
+    patches.push({
+      id: `patch-${patchIdSeed}`,
+      connectionId,
+      source: endpoints.source,
+      target: endpoints.target
+    });
+    setPatchStatus(
+      `Patched ${endpoints.source.moduleName} ${endpoints.source.port.label} to ${endpoints.target.moduleName} ${endpoints.target.port.label}`
+    );
+  } catch (error) {
+    setPatchStatus(error.message);
+  }
+}
+
+function startPatch(start) {
+  activePatchStart = start;
+  previewPoint = getJackPoint(start.jack);
+  start.jack.classList.add("jack-patching");
+  markPatchTargets(start);
+  setPatchStatus(`Patching from ${start.moduleName} ${start.port.label}`);
+  renderCableLayer();
+}
+
+function removePatch(patchId) {
+  const patchIndex = patches.findIndex((patch) => patch.id === patchId);
+
+  if (patchIndex === -1) {
+    return;
+  }
+
+  const [patch] = patches.splice(patchIndex, 1);
+  graphHost.disconnect(patch.connectionId);
+  setPatchStatus(`Removed ${patch.source.moduleName} to ${patch.target.moduleName} patch`);
+  renderCableLayer();
+}
+
+function handlePatchPointerDown(event) {
+  const jack = event.target.closest(".jack");
+
+  if (!jack) {
+    return;
+  }
+
+  const start = getPortDescriptor(jack);
+
+  if (!start) {
+    return;
+  }
+
+  event.preventDefault();
+  startPatch(start);
+}
+
+function handlePatchPointerMove(event) {
+  if (!activePatchStart) {
+    return;
+  }
+
+  const rackRect = rackFrame.getBoundingClientRect();
+  previewPoint = {
+    x: event.clientX - rackRect.left + rackFrame.scrollLeft,
+    y: event.clientY - rackRect.top + rackFrame.scrollTop
+  };
+  renderCableLayer();
+}
+
+function handlePatchPointerUp(event) {
+  if (!activePatchStart) {
+    return;
+  }
+
+  const jack = document.elementFromPoint(event.clientX, event.clientY)?.closest(".jack");
+  const target = jack && jack !== activePatchStart.jack ? getPortDescriptor(jack) : null;
+
+  if (target) {
+    connectPatch(activePatchStart, target);
+  }
+
+  clearActivePatch();
+}
+
+function bindPatchCables() {
+  rackRow.addEventListener("pointerdown", handlePatchPointerDown);
+  rackRow.addEventListener("keydown", (event) => {
+    const jack = event.target.closest(".jack");
+
+    if (!jack) {
+      return;
+    }
+
+    if (event.key === "Escape") {
+      clearActivePatch();
+      return;
+    }
+
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const target = getPortDescriptor(jack);
+
+    if (!target) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (!activePatchStart) {
+      startPatch(target);
+      return;
+    }
+
+    if (target.jack !== activePatchStart.jack) {
+      connectPatch(activePatchStart, target);
+    }
+
+    clearActivePatch();
+  });
+  document.addEventListener("pointermove", handlePatchPointerMove);
+  document.addEventListener("pointerup", handlePatchPointerUp);
+  cableLayer.addEventListener("click", (event) => {
+    const cable = event.target.closest(".patch-cable[data-patch-id]");
+
+    if (cable) {
+      removePatch(cable.dataset.patchId);
+    }
+  });
+  rackFrame.addEventListener("scroll", renderCableLayer);
+  window.addEventListener("resize", renderCableLayer);
+}
+
 function renderRack() {
   const registeredModules = moduleRegistry.list();
 
@@ -69,10 +338,11 @@ function renderRack() {
 
   const usedHp = registeredModules.reduce((total, module) => total + module.hp, 0);
   hpReadout.textContent = `${usedHp} / ${rackConfig.totalHp} HP`;
-  statusText.textContent = `${graphHost.registeredModuleCount} modules registered`;
+  setPatchStatus();
 
   rackRow.replaceChildren(...registeredModules.map((module) => createModulePanel(document, module)));
   bindModuleControls();
+  renderCableLayer();
 }
 
 function getModuleNodes(moduleId) {
@@ -239,3 +509,4 @@ function triggerEnvelope(nodes) {
 }
 
 renderRack();
+bindPatchCables();

@@ -93,6 +93,24 @@ function createEnvelopeAudioNodes(audioContext) {
   };
 }
 
+function createOutputAudioNodes(audioContext) {
+  const left = audioContext.createGain();
+  const right = audioContext.createGain();
+
+  left.gain.value = 0.8;
+  right.gain.value = 0.8;
+
+  if (audioContext.destination) {
+    left.connect(audioContext.destination);
+    right.connect(audioContext.destination);
+  }
+
+  return {
+    left,
+    right
+  };
+}
+
 export const placeholderModules = [
   {
     id: "blank-left",
@@ -294,9 +312,10 @@ export const placeholderModules = [
     hp: 10,
     controls: ["level"],
     ports: [
-      { label: "left", type: "audio", direction: "input" },
-      { label: "right", type: "audio", direction: "input" }
-    ]
+      { label: "left", type: "audio", direction: "input", node: "left" },
+      { label: "right", type: "audio", direction: "input", node: "right" }
+    ],
+    createAudioNodes: createOutputAudioNodes
   },
   {
     id: "blank-right",

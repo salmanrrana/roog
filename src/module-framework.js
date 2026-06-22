@@ -92,7 +92,7 @@ export function createModuleRegistry() {
   };
 }
 
-export function createJackElement(documentRef, port) {
+export function createJackElement(documentRef, port, moduleId) {
   const wrapper = documentRef.createElement("span");
   wrapper.className = "jack-port";
 
@@ -100,6 +100,9 @@ export function createJackElement(documentRef, port) {
   element.className = `jack jack-${port.type}`;
   element.title = `${port.label} ${port.direction} ${port.type}`;
   element.setAttribute("aria-label", `${port.label} ${port.direction} ${port.type}`);
+  element.setAttribute("role", "button");
+  element.tabIndex = 0;
+  element.dataset.moduleId = moduleId;
   element.dataset.portId = port.id;
   element.dataset.signal = port.type;
   element.dataset.direction = port.direction;
@@ -189,7 +192,9 @@ export function createModulePanel(documentRef, moduleDefinition) {
   const jacks = documentRef.createElement("div");
   jacks.className = "jack-bank";
   jacks.setAttribute("aria-label", `${moduleDefinition.name} patch points`);
-  moduleDefinition.ports.forEach((port) => jacks.append(createJackElement(documentRef, port)));
+  moduleDefinition.ports.forEach((port) =>
+    jacks.append(createJackElement(documentRef, port, moduleDefinition.id))
+  );
 
   panel.append(title, controls, jacks);
   return panel;
