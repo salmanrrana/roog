@@ -10,6 +10,7 @@ const hpReadout = document.querySelector("[data-hp-readout]");
 const powerBus = document.querySelector("[data-power-bus]");
 const statusText = document.querySelector("[data-status-text]");
 const layoutStorageKey = "roog-module-layout-v1";
+const legacyModuleIds = new Map([["blank-left", "roog-audio-input"]]);
 const moduleRegistry = createModuleRegistry();
 const graphHost = createAudioGraphHost();
 const patches = [];
@@ -93,7 +94,10 @@ function loadModuleOrder(registeredModules) {
     }
 
     const knownIds = new Set(defaultOrder);
-    const restoredOrder = savedOrder.filter((moduleId) => knownIds.has(moduleId));
+    const migratedOrder = savedOrder.map((moduleId) => legacyModuleIds.get(moduleId) ?? moduleId);
+    const restoredOrder = migratedOrder.filter(
+      (moduleId, index) => knownIds.has(moduleId) && migratedOrder.indexOf(moduleId) === index
+    );
     const missingIds = defaultOrder.filter((moduleId) => !restoredOrder.includes(moduleId));
     const nextOrder = [...restoredOrder, ...missingIds];
 

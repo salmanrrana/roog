@@ -66,6 +66,7 @@ assert.match(appSource, /createAudioGraphHost/);
 assert.match(appSource, /data-hp-readout/);
 assert.match(appSource, /renderPowerBus/);
 assert.match(appSource, /layoutStorageKey/);
+assert.match(appSource, /legacyModuleIds/);
 assert.match(appSource, /bindModuleReordering/);
 assert.match(appSource, /isOrderWithinRackCapacity/);
 assert.match(appSource, /bindAudioInputControls/);
