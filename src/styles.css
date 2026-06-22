@@ -237,6 +237,15 @@ h2 {
     linear-gradient(160deg, rgb(255 255 255 / 32%), transparent 38%),
     var(--panel-bg);
   color: var(--panel-ink);
+  transition:
+    transform 120ms ease,
+    filter 120ms ease;
+}
+
+.module-dragging {
+  z-index: 5;
+  filter: drop-shadow(0 18px 16px rgb(0 0 0 / 42%));
+  transform: translateY(-6px) rotate(-1deg);
 }
 
 .module-panel:nth-child(2n) {
@@ -263,7 +272,18 @@ h2 {
   min-width: 0;
   padding-bottom: 12px;
   border-bottom: 2px solid currentColor;
+  cursor: grab;
   font-weight: 950;
+  user-select: none;
+}
+
+.module-title:focus-visible {
+  outline: 3px solid var(--accent-yellow);
+  outline-offset: 4px;
+}
+
+.module-dragging .module-title {
+  cursor: grabbing;
 }
 
 .module-title span {

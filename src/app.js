@@ -9,17 +9,22 @@ const cableLayer = document.querySelector("[data-patch-cable-layer]");
 const hpReadout = document.querySelector("[data-hp-readout]");
 const powerBus = document.querySelector("[data-power-bus]");
 const statusText = document.querySelector("[data-status-text]");
+const layoutStorageKey = "roog-module-layout-v1";
 const moduleRegistry = createModuleRegistry();
 const graphHost = createAudioGraphHost();
 const patches = [];
 let activePatchStart = null;
 let previewPoint = null;
 let patchIdSeed = 0;
+let moduleOrder = [];
+let draggedModuleId = null;
 
 placeholderModules.forEach((moduleDefinition) => {
   const registeredModule = moduleRegistry.register(moduleDefinition);
   graphHost.registerModule(registeredModule);
 });
+
+moduleOrder = loadModuleOrder(moduleRegistry.list());
 
 function createHpGrid(totalHp) {
   const fragment = document.createDocumentFragment();
@@ -67,6 +72,55 @@ function renderPowerBus(powerRails) {
   powerBus.replaceChildren(label, ...lanes);
 }
 
+function getDefaultModuleOrder(registeredModules) {
+  return registeredModules.map((moduleDefinition) => moduleDefinition.id);
+}
+
+function isOrderWithinRackCapacity(order) {
+  const usedHp = order.reduce((total, moduleId) => total + (moduleRegistry.get(moduleId)?.hp ?? 0), 0);
+
+  return usedHp <= rackConfig.totalHp;
+}
+
+function loadModuleOrder(registeredModules) {
+  const defaultOrder = getDefaultModuleOrder(registeredModules);
+
+  try {
+    const savedOrder = JSON.parse(localStorage.getItem(layoutStorageKey) ?? "null");
+
+    if (!Array.isArray(savedOrder)) {
+      return defaultOrder;
+    }
+
+    const knownIds = new Set(defaultOrder);
+    const restoredOrder = savedOrder.filter((moduleId) => knownIds.has(moduleId));
+    const missingIds = defaultOrder.filter((moduleId) => !restoredOrder.includes(moduleId));
+    const nextOrder = [...restoredOrder, ...missingIds];
+
+    return isOrderWithinRackCapacity(nextOrder) ? nextOrder : defaultOrder;
+  } catch {
+    return defaultOrder;
+  }
+}
+
+function saveModuleOrder() {
+  try {
+    localStorage.setItem(layoutStorageKey, JSON.stringify(moduleOrder));
+  } catch {
+    setPatchStatus("Module order changed, but this browser could not persist the layout");
+  }
+}
+
+function getOrderedModules() {
+  const registeredModules = moduleRegistry.list();
+  const modulesById = new Map(registeredModules.map((moduleDefinition) => [moduleDefinition.id, moduleDefinition]));
+  const orderedIds = moduleOrder.filter((moduleId) => modulesById.has(moduleId));
+  const missingIds = getDefaultModuleOrder(registeredModules).filter((moduleId) => !orderedIds.includes(moduleId));
+
+  moduleOrder = [...orderedIds, ...missingIds];
+  return moduleOrder.map((moduleId) => modulesById.get(moduleId));
+}
+
 function getPortDescriptor(jack) {
   const moduleDefinition = moduleRegistry.get(jack.dataset.moduleId);
   const port = moduleDefinition?.ports.find((candidate) => candidate.id === jack.dataset.portId);
@@ -105,6 +159,20 @@ function getJackPoint(jack) {
   };
 }
 
+function refreshEndpointJack(endpoint) {
+  if (endpoint.jack?.isConnected) {
+    return endpoint.jack;
+  }
+
+  const jack = [...rackRow.querySelectorAll(".jack")].find(
+    (candidate) =>
+      candidate.dataset.moduleId === endpoint.moduleId && candidate.dataset.portId === endpoint.port.id
+  );
+
+  endpoint.jack = jack ?? null;
+  return endpoint.jack;
+}
+
 function getCablePath(startPoint, endPoint) {
   const slack = Math.max(48, Math.abs(endPoint.x - startPoint.x) * 0.38);
 
@@ -131,7 +199,10 @@ function renderCableLayer() {
   cableLayer.style.height = `${frameHeight}px`;
 
   patches.forEach((patch) => {
-    if (!patch.source.jack.isConnected || !patch.target.jack.isConnected) {
+    const sourceJack = refreshEndpointJack(patch.source);
+    const targetJack = refreshEndpointJack(patch.target);
+
+    if (!sourceJack || !targetJack) {
       return;
     }
 
@@ -330,8 +401,146 @@ function bindPatchCables() {
   window.addEventListener("resize", renderCableLayer);
 }
 
+function moveModule(moduleId, targetIndex) {
+  const currentIndex = moduleOrder.indexOf(moduleId);
+
+  if (currentIndex === -1 || targetIndex === currentIndex) {
+    return false;
+  }
+
+  const nextOrder = moduleOrder.slice();
+
+  nextOrder.splice(currentIndex, 1);
+  nextOrder.splice(targetIndex, 0, moduleId);
+
+  if (!isOrderWithinRackCapacity(nextOrder)) {
+    setPatchStatus("Cannot move module: rack layout exceeds row capacity");
+    return false;
+  }
+
+  moduleOrder = nextOrder;
+  saveModuleOrder();
+  renderRack();
+  renderCableLayer();
+  return true;
+}
+
+function moveDraggedModule(overPanel, clientX) {
+  if (!draggedModuleId || overPanel.dataset.moduleId === draggedModuleId) {
+    return;
+  }
+
+  const overIndex = moduleOrder.indexOf(overPanel.dataset.moduleId);
+  const currentIndex = moduleOrder.indexOf(draggedModuleId);
+
+  if (overIndex === -1 || currentIndex === -1) {
+    return;
+  }
+
+  const overRect = overPanel.getBoundingClientRect();
+  let targetIndex = clientX > overRect.left + overRect.width / 2 ? overIndex + 1 : overIndex;
+
+  if (currentIndex < targetIndex) {
+    targetIndex -= 1;
+  }
+
+  if (moveModule(draggedModuleId, targetIndex)) {
+    const draggedPanel = rackRow.querySelector(`[data-module-id="${draggedModuleId}"]`);
+
+    draggedPanel?.classList.add("module-dragging");
+    draggedPanel?.setAttribute("aria-grabbed", "true");
+  }
+}
+
+function handleModuleReorderPointerDown(event) {
+  const dragHandle = event.target.closest(".module-title");
+  const panel = dragHandle?.closest(".module-panel");
+
+  if (!panel) {
+    return;
+  }
+
+  event.preventDefault();
+  draggedModuleId = panel.dataset.moduleId;
+  panel.classList.add("module-dragging");
+  panel.setAttribute("aria-grabbed", "true");
+  setPatchStatus(`Dragging ${panel.querySelector(".module-title span")?.textContent ?? "module"}`);
+}
+
+function handleModuleReorderPointerMove(event) {
+  if (!draggedModuleId) {
+    return;
+  }
+
+  const overPanel = document.elementFromPoint(event.clientX, event.clientY)?.closest(".module-panel");
+
+  if (overPanel) {
+    moveDraggedModule(overPanel, event.clientX);
+  }
+}
+
+function clearModuleDrag() {
+  if (!draggedModuleId) {
+    return;
+  }
+
+  const moduleDefinition = moduleRegistry.get(draggedModuleId);
+  const draggedPanel = rackRow.querySelector(`[data-module-id="${draggedModuleId}"]`);
+
+  draggedPanel?.classList.remove("module-dragging");
+  draggedPanel?.setAttribute("aria-grabbed", "false");
+  setPatchStatus(`${moduleDefinition?.name ?? "Module"} moved · layout saved`);
+  draggedModuleId = null;
+}
+
+function handleModuleReorderKeyDown(event) {
+  const dragHandle = event.target.closest(".module-title");
+  const panel = dragHandle?.closest(".module-panel");
+
+  if (!panel || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) {
+    return;
+  }
+
+  const currentIndex = moduleOrder.indexOf(panel.dataset.moduleId);
+  const targetIndex = event.key === "ArrowLeft" ? currentIndex - 1 : currentIndex + 1;
+
+  if (targetIndex < 0 || targetIndex >= moduleOrder.length) {
+    return;
+  }
+
+  event.preventDefault();
+
+  if (moveModule(panel.dataset.moduleId, targetIndex)) {
+    rackRow.querySelector(`[data-module-id="${panel.dataset.moduleId}"] .module-title`)?.focus();
+    setPatchStatus("Module moved with keyboard · layout saved");
+  }
+}
+
+function bindModuleReordering() {
+  rackRow.addEventListener("pointerdown", handleModuleReorderPointerDown);
+  rackRow.addEventListener("keydown", handleModuleReorderKeyDown);
+  document.addEventListener("pointermove", handleModuleReorderPointerMove);
+  document.addEventListener("pointerup", clearModuleDrag);
+  document.addEventListener("pointercancel", clearModuleDrag);
+}
+
+function createRackModulePanel(moduleDefinition) {
+  const panel = createModulePanel(document, moduleDefinition);
+  const dragHandle = panel.querySelector(".module-title");
+
+  panel.setAttribute("aria-grabbed", "false");
+
+  if (dragHandle) {
+    dragHandle.tabIndex = 0;
+    dragHandle.title = "Drag or use Left/Right arrows to rearrange this module";
+    dragHandle.setAttribute("aria-label", `Move ${moduleDefinition.name} module`);
+  }
+
+  return panel;
+}
+
 function renderRack() {
-  const registeredModules = moduleRegistry.list();
+  const registeredModules = getOrderedModules();
 
   createHpGrid(rackConfig.totalHp);
   renderPowerBus(rackConfig.powerRails);
@@ -340,7 +549,7 @@ function renderRack() {
   hpReadout.textContent = `${usedHp} / ${rackConfig.totalHp} HP`;
   setPatchStatus();
 
-  rackRow.replaceChildren(...registeredModules.map((module) => createModulePanel(document, module)));
+  rackRow.replaceChildren(...registeredModules.map(createRackModulePanel));
   bindModuleControls();
   renderCableLayer();
 }
@@ -510,3 +719,4 @@ function triggerEnvelope(nodes) {
 
 renderRack();
 bindPatchCables();
+bindModuleReordering();
