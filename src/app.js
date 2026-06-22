@@ -567,11 +567,54 @@ function setAudioParamValue(audioParam, value) {
 }
 
 function bindModuleControls() {
+  bindAudioInputControls();
   bindVcoControls();
   bindVcfControls();
   bindVcaControls();
   bindLfoControls();
   bindEnvelopeControls();
+}
+
+function bindAudioInputControls() {
+  const inputPanel = rackRow.querySelector('[data-module-id="roog-audio-input"]');
+
+  if (!inputPanel) {
+    return;
+  }
+
+  const arm = inputPanel.querySelector('[data-control-id="arm"]');
+  const level = inputPanel.querySelector('[data-control-id="level"]');
+
+  level?.addEventListener("input", () => {
+    const nodes = getModuleNodes("roog-audio-input");
+
+    setAudioParamValue(nodes?.level, level.value);
+  });
+  arm?.addEventListener("click", async () => {
+    const nodes = getModuleNodes("roog-audio-input");
+
+    if (!nodes) {
+      return;
+    }
+
+    if (nodes.mediaStream) {
+      setPatchStatus("Microphone input is already armed");
+      return;
+    }
+
+    try {
+      arm.disabled = true;
+      setPatchStatus("Requesting microphone access...");
+      await graphHost.context?.resume?.();
+      await nodes.activate();
+      arm.textContent = "live";
+      setPatchStatus("Microphone input armed · patch MIC IN audio to a processor or output");
+    } catch (error) {
+      arm.disabled = false;
+      arm.textContent = "arm";
+      setPatchStatus(error instanceof Error ? error.message : "Microphone input could not start");
+    }
+  });
 }
 
 function bindVcoControls() {

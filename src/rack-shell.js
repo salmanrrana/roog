@@ -93,6 +93,42 @@ function createEnvelopeAudioNodes(audioContext) {
   };
 }
 
+function createAudioInputNodes(audioContext) {
+  const output = audioContext.createGain();
+  let source = null;
+  let mediaStream = null;
+
+  output.gain.value = 0.85;
+
+  return {
+    output,
+    level: output.gain,
+    get mediaStream() {
+      return mediaStream;
+    },
+    async activate(mediaDevices = globalThis.navigator?.mediaDevices) {
+      if (source) {
+        return mediaStream;
+      }
+
+      if (!mediaDevices?.getUserMedia || !audioContext.createMediaStreamSource) {
+        throw new Error("Microphone input is unavailable in this browser");
+      }
+
+      mediaStream = await mediaDevices.getUserMedia({ audio: true });
+      source = audioContext.createMediaStreamSource(mediaStream);
+      source.connect(output);
+      return mediaStream;
+    },
+    stop() {
+      source?.disconnect(output);
+      source = null;
+      mediaStream?.getTracks?.().forEach((track) => track.stop());
+      mediaStream = null;
+    }
+  };
+}
+
 function createOutputAudioNodes(audioContext) {
   const left = audioContext.createGain();
   const right = audioContext.createGain();
@@ -113,12 +149,31 @@ function createOutputAudioNodes(audioContext) {
 
 export const placeholderModules = [
   {
-    id: "blank-left",
-    name: "BLANK",
-    kind: "blank",
+    id: "roog-audio-input",
+    name: "MIC IN",
+    kind: "source",
     hp: 8,
-    controls: ["reserve"],
-    ports: []
+    controls: [
+      {
+        id: "arm",
+        label: "mic",
+        type: "button",
+        value: "arm"
+      },
+      {
+        id: "level",
+        label: "gain",
+        type: "range",
+        min: 0,
+        max: 1.5,
+        step: 0.01,
+        value: 0.85
+      }
+    ],
+    ports: [
+      { label: "audio", type: signalTypes.audio, direction: portDirections.output, node: "output" }
+    ],
+    createAudioNodes: createAudioInputNodes
   },
   {
     id: "roog-vco",

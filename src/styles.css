@@ -321,6 +321,13 @@ h2 {
   color: #f2e6ca;
 }
 
+.module-panel[data-module-id="roog-audio-input"] {
+  background:
+    radial-gradient(circle at 50% 13%, rgb(225 53 45 / 22%), transparent 48px),
+    linear-gradient(160deg, rgb(255 255 255 / 34%), transparent 34%),
+    var(--panel-bg);
+}
+
 .module-title {
   display: flex;
   align-items: start;

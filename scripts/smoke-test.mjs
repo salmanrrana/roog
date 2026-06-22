@@ -68,6 +68,7 @@ assert.match(appSource, /renderPowerBus/);
 assert.match(appSource, /layoutStorageKey/);
 assert.match(appSource, /bindModuleReordering/);
 assert.match(appSource, /isOrderWithinRackCapacity/);
+assert.match(appSource, /bindAudioInputControls/);
 assert.match(rackSource, /totalHp: 84/);
 assert.match(rackSource, /powerRails/);
 assert.match(rackSource, /ports/);
@@ -176,7 +177,53 @@ class SmokeAudioContext {
       }
     };
   }
+
+  createMediaStreamSource(stream) {
+    return {
+      stream,
+      connect(target) {
+        this.connectedTarget = target;
+      },
+      disconnect(target) {
+        this.disconnectedTarget = target;
+      }
+    };
+  }
 }
+
+const audioInputDefinition = placeholderModules.find(
+  (moduleDefinition) => moduleDefinition.id === "roog-audio-input"
+);
+assert.ok(audioInputDefinition, "Audio input module should be registered in the rack shell");
+assert.deepEqual(
+  audioInputDefinition.controls.map((control) => control.id),
+  ["arm", "level"]
+);
+assert.deepEqual(
+  audioInputDefinition.ports.map((port) => [port.type, port.direction, port.node]),
+  [[signalTypes.audio, portDirections.output, "output"]]
+);
+
+const audioInputRegistry = createModuleRegistry();
+const registeredAudioInput = audioInputRegistry.register(audioInputDefinition);
+const audioInputGraphHost = createAudioGraphHost({ AudioContextClass: SmokeAudioContext });
+const audioInputNodes = audioInputGraphHost.registerModule(registeredAudioInput).nodes;
+const fakeTrack = { stopped: false, stop() { this.stopped = true; } };
+const fakeStream = { getTracks: () => [fakeTrack] };
+let requestedMicConstraints = null;
+
+await audioInputNodes.activate({
+  async getUserMedia(constraints) {
+    requestedMicConstraints = constraints;
+    return fakeStream;
+  }
+});
+assert.deepEqual(requestedMicConstraints, { audio: true });
+assert.equal(audioInputNodes.level.value, 0.85);
+assert.equal(audioInputNodes.mediaStream, fakeStream);
+audioInputNodes.stop();
+assert.equal(fakeTrack.stopped, true);
+assert.equal(audioInputNodes.mediaStream, null);
 
 const vcoDefinition = placeholderModules.find((moduleDefinition) => moduleDefinition.id === "roog-vco");
 assert.ok(vcoDefinition, "VCO module should be registered in the rack shell");
