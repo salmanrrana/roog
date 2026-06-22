@@ -272,7 +272,8 @@ h2 {
 }
 
 .knob input,
-.knob select {
+.knob select,
+.knob button {
   width: min(46px, 90%);
   min-width: 0;
   border: 0;
@@ -281,6 +282,12 @@ h2 {
   color: #f8ead0;
   font-size: 0.54rem;
   font-weight: 850;
+}
+
+.knob button {
+  padding: 2px 5px;
+  cursor: pointer;
+  text-transform: uppercase;
 }
 
 .knob input[type="range"] {

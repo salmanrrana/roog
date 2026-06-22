@@ -114,9 +114,34 @@ class SmokeAudioContext {
 
   createGain() {
     return {
-      gain: { value: 1 },
+      gain: {
+        value: 1,
+        cancelScheduledValues(time) {
+          this.cancelTime = time;
+        },
+        setValueAtTime(value, time) {
+          this.value = value;
+          this.setTime = time;
+        },
+        linearRampToValueAtTime(value, time) {
+          this.value = value;
+          this.rampTime = time;
+        }
+      },
       connect(target) {
         this.connectedTarget = target;
+      }
+    };
+  }
+
+  createConstantSource() {
+    return {
+      offset: { value: 0 },
+      connect(target) {
+        this.connectedTarget = target;
+      },
+      start() {
+        this.started = true;
       }
     };
   }
@@ -212,6 +237,56 @@ const vcaAudioIn = vcaDefinition.ports.find(
   (port) => port.type === signalTypes.audio && port.direction === portDirections.input
 );
 const vcaCvIn = vcaDefinition.ports.find((port) => port.type === signalTypes.cv);
+
+const lfoDefinition = placeholderModules.find((moduleDefinition) => moduleDefinition.id === "roog-lfo");
+assert.ok(lfoDefinition, "LFO module should be registered in the rack shell");
+assert.deepEqual(
+  lfoDefinition.controls.map((control) => control.id),
+  ["rate", "waveform", "depth"]
+);
+assert.deepEqual(
+  lfoDefinition.ports.map((port) => [port.type, port.direction, port.node]),
+  [[signalTypes.cv, portDirections.output, "output"]]
+);
+
+const envelopeDefinition = placeholderModules.find(
+  (moduleDefinition) => moduleDefinition.id === "roog-envelope"
+);
+assert.ok(envelopeDefinition, "Envelope module should be registered in the rack shell");
+assert.deepEqual(
+  envelopeDefinition.controls.map((control) => control.id),
+  ["trigger", "attack", "decay", "sustain", "release"]
+);
+assert.deepEqual(
+  envelopeDefinition.ports.map((port) => [port.type, port.direction, port.node]),
+  [
+    [signalTypes.gate, portDirections.input, "gate"],
+    [signalTypes.cv, portDirections.output, "output"]
+  ]
+);
+
+const modulationRegistry = createModuleRegistry();
+const registeredLfo = modulationRegistry.register(lfoDefinition);
+const registeredEnvelope = modulationRegistry.register(envelopeDefinition);
+const modulationGraphHost = createAudioGraphHost({ AudioContextClass: SmokeAudioContext });
+const lfoNodes = modulationGraphHost.registerModule(registeredLfo).nodes;
+const envelopeNodes = modulationGraphHost.registerModule(registeredEnvelope).nodes;
+assert.equal(lfoNodes.oscillator.type, "sine");
+assert.equal(lfoNodes.rate.value, 2);
+assert.equal(lfoNodes.depth.value, 1);
+assert.equal(lfoNodes.oscillator.connectedTarget, lfoNodes.output);
+assert.equal(lfoNodes.oscillator.started, true);
+assert.equal(envelopeNodes.source.offset.value, 1);
+assert.equal(envelopeNodes.envelope.value, 0);
+assert.equal(envelopeNodes.source.connectedTarget, envelopeNodes.output);
+assert.equal(envelopeNodes.source.started, true);
+
+const lfoCvOut = lfoDefinition.ports[0];
+const envelopeGateIn = envelopeDefinition.ports[0];
+const envelopeCvOut = envelopeDefinition.ports[1];
+assert.equal(canPatchPorts(lfoCvOut, vcaCvIn), true);
+assert.equal(canPatchPorts(envelopeCvOut, vcaCvIn), true);
+assert.equal(canPatchPorts(lfoCvOut, envelopeGateIn), false);
 assert.equal(canPatchPorts(vcfAudioOut, vcaAudioIn), true);
 assert.equal(canPatchPorts(vcfAudioOut, vcaCvIn), false);
 

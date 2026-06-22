@@ -91,6 +91,8 @@ function bindModuleControls() {
   bindVcoControls();
   bindVcfControls();
   bindVcaControls();
+  bindLfoControls();
+  bindEnvelopeControls();
 }
 
 function bindVcoControls() {
@@ -159,6 +161,81 @@ function bindVcaControls() {
 
     setAudioParamValue(nodes?.amplitude, level.value);
   });
+}
+
+function bindLfoControls() {
+  const lfoPanel = rackRow.querySelector('[data-module-id="roog-lfo"]');
+
+  if (!lfoPanel) {
+    return;
+  }
+
+  const rate = lfoPanel.querySelector('[data-control-id="rate"]');
+  const waveform = lfoPanel.querySelector('[data-control-id="waveform"]');
+  const depth = lfoPanel.querySelector('[data-control-id="depth"]');
+
+  rate?.addEventListener("input", () => {
+    const nodes = getModuleNodes("roog-lfo");
+
+    setAudioParamValue(nodes?.rate, rate.value);
+  });
+  waveform?.addEventListener("input", () => {
+    const nodes = getModuleNodes("roog-lfo");
+
+    if (nodes) {
+      nodes.oscillator.type = waveform.value;
+    }
+  });
+  depth?.addEventListener("input", () => {
+    const nodes = getModuleNodes("roog-lfo");
+
+    setAudioParamValue(nodes?.depth, depth.value);
+  });
+}
+
+function bindEnvelopeControls() {
+  const envelopePanel = rackRow.querySelector('[data-module-id="roog-envelope"]');
+
+  if (!envelopePanel) {
+    return;
+  }
+
+  const attack = envelopePanel.querySelector('[data-control-id="attack"]');
+  const decay = envelopePanel.querySelector('[data-control-id="decay"]');
+  const sustain = envelopePanel.querySelector('[data-control-id="sustain"]');
+  const release = envelopePanel.querySelector('[data-control-id="release"]');
+  const trigger = envelopePanel.querySelector('[data-control-id="trigger"]');
+
+  [attack, decay, sustain, release].forEach((control) => {
+    control?.addEventListener("input", () => {
+      const nodes = getModuleNodes("roog-envelope");
+
+      setAudioParamValue(nodes?.[control.dataset.controlId], control.value);
+    });
+  });
+  trigger?.addEventListener("click", () => {
+    const nodes = getModuleNodes("roog-envelope");
+
+    if (nodes) {
+      triggerEnvelope(nodes);
+    }
+  });
+}
+
+function triggerEnvelope(nodes) {
+  const now = graphHost.context?.currentTime ?? 0;
+  const attack = Number(nodes.attack.value);
+  const decay = Number(nodes.decay.value);
+  const sustain = Number(nodes.sustain.value);
+  const release = Number(nodes.release.value);
+  const envelope = nodes.envelope;
+  const sustainTime = now + attack + decay;
+
+  envelope.cancelScheduledValues(now);
+  envelope.setValueAtTime(envelope.value, now);
+  envelope.linearRampToValueAtTime(1, now + attack);
+  envelope.linearRampToValueAtTime(sustain, sustainTime);
+  envelope.linearRampToValueAtTime(0, sustainTime + release);
 }
 
 renderRack();

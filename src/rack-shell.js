@@ -54,6 +54,45 @@ function createVcaAudioNodes(audioContext) {
   };
 }
 
+function createLfoAudioNodes(audioContext) {
+  const oscillator = audioContext.createOscillator();
+  const depth = audioContext.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.value = 2;
+  depth.gain.value = 1;
+  oscillator.connect(depth);
+  oscillator.start();
+
+  return {
+    oscillator,
+    rate: oscillator.frequency,
+    depth: depth.gain,
+    output: depth
+  };
+}
+
+function createEnvelopeAudioNodes(audioContext) {
+  const source = audioContext.createConstantSource();
+  const output = audioContext.createGain();
+
+  source.offset.value = 1;
+  output.gain.value = 0;
+  source.connect(output);
+  source.start();
+
+  return {
+    source,
+    envelope: output.gain,
+    gate: output.gain,
+    attack: { value: 0.05 },
+    decay: { value: 0.2 },
+    sustain: { value: 0.6 },
+    release: { value: 0.4 },
+    output
+  };
+}
+
 export const placeholderModules = [
   {
     id: "blank-left",
@@ -157,15 +196,96 @@ export const placeholderModules = [
     createAudioNodes: createVcaAudioNodes
   },
   {
-    id: "mod-placeholder",
-    name: "MOD",
+    id: "roog-lfo",
+    name: "LFO",
     kind: "modulator",
-    hp: 12,
-    controls: ["rate", "depth"],
+    hp: 8,
+    controls: [
+      {
+        id: "rate",
+        label: "rate",
+        type: "range",
+        min: 0.05,
+        max: 20,
+        step: 0.05,
+        value: 2
+      },
+      {
+        id: "waveform",
+        label: "shape",
+        type: "select",
+        options: ["sine", "square", "sawtooth", "triangle"],
+        value: "sine"
+      },
+      {
+        id: "depth",
+        label: "depth",
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        value: 1
+      }
+    ],
     ports: [
-      { label: "cv", type: "cv", direction: "output" },
-      { label: "gate", type: "gate", direction: "output" }
-    ]
+      { label: "cv", type: signalTypes.cv, direction: portDirections.output, node: "output" }
+    ],
+    createAudioNodes: createLfoAudioNodes
+  },
+  {
+    id: "roog-envelope",
+    name: "ENV",
+    kind: "modulator",
+    hp: 10,
+    controls: [
+      {
+        id: "trigger",
+        label: "gate",
+        type: "button",
+        value: "trig"
+      },
+      {
+        id: "attack",
+        label: "atk",
+        type: "range",
+        min: 0.01,
+        max: 2,
+        step: 0.01,
+        value: 0.05
+      },
+      {
+        id: "decay",
+        label: "dec",
+        type: "range",
+        min: 0.01,
+        max: 2,
+        step: 0.01,
+        value: 0.2
+      },
+      {
+        id: "sustain",
+        label: "sus",
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        value: 0.6
+      },
+      {
+        id: "release",
+        label: "rel",
+        type: "range",
+        min: 0.01,
+        max: 3,
+        step: 0.01,
+        value: 0.4
+      }
+    ],
+    ports: [
+      { label: "gate", type: signalTypes.gate, direction: portDirections.input, node: "gate" },
+      { label: "cv", type: signalTypes.cv, direction: portDirections.output, node: "output" }
+    ],
+    createAudioNodes: createEnvelopeAudioNodes
   },
   {
     id: "output-placeholder",
@@ -182,7 +302,7 @@ export const placeholderModules = [
     id: "blank-right",
     name: "VOID",
     kind: "blank",
-    hp: 14,
+    hp: 8,
     controls: ["future"],
     ports: []
   }

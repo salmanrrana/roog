@@ -144,7 +144,9 @@ export function createModulePanel(documentRef, moduleDefinition) {
     controlElement.append(label);
 
     if (controlDefinition.type) {
-      const input = documentRef.createElement(controlDefinition.type === "select" ? "select" : "input");
+      const input = documentRef.createElement(
+        controlDefinition.type === "select" || controlDefinition.type === "button" ? controlDefinition.type : "input"
+      );
       input.dataset.controlId = controlDefinition.id;
       input.setAttribute("aria-label", `${moduleDefinition.name} ${controlDefinition.label}`);
 
@@ -155,14 +157,29 @@ export function createModulePanel(documentRef, moduleDefinition) {
           optionElement.textContent = option;
           input.append(optionElement);
         });
+      } else if (controlDefinition.type === "button") {
+        input.type = "button";
+        input.textContent = controlDefinition.value ?? controlDefinition.label;
       } else {
         input.type = controlDefinition.type;
-        input.min = String(controlDefinition.min);
-        input.max = String(controlDefinition.max);
-        input.step = String(controlDefinition.step);
+
+        if (controlDefinition.min !== undefined) {
+          input.min = String(controlDefinition.min);
+        }
+
+        if (controlDefinition.max !== undefined) {
+          input.max = String(controlDefinition.max);
+        }
+
+        if (controlDefinition.step !== undefined) {
+          input.step = String(controlDefinition.step);
+        }
       }
 
-      input.value = String(controlDefinition.value);
+      if (controlDefinition.type !== "button") {
+        input.value = String(controlDefinition.value);
+      }
+
       controlElement.append(input);
     }
 
