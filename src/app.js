@@ -72,7 +72,25 @@ function renderRack() {
   statusText.textContent = `${graphHost.registeredModuleCount} modules registered`;
 
   rackRow.replaceChildren(...registeredModules.map((module) => createModulePanel(document, module)));
+  bindModuleControls();
+}
+
+function getModuleNodes(moduleId) {
+  const moduleDefinition = moduleRegistry.get(moduleId);
+
+  return moduleDefinition ? graphHost.registerModule(moduleDefinition).nodes : null;
+}
+
+function setAudioParamValue(audioParam, value) {
+  if (audioParam) {
+    audioParam.value = Number(value);
+  }
+}
+
+function bindModuleControls() {
   bindVcoControls();
+  bindVcfControls();
+  bindVcaControls();
 }
 
 function bindVcoControls() {
@@ -85,21 +103,61 @@ function bindVcoControls() {
   const frequency = vcoPanel.querySelector('[data-control-id="frequency"]');
   const waveform = vcoPanel.querySelector('[data-control-id="waveform"]');
   const detune = vcoPanel.querySelector('[data-control-id="detune"]');
-  let nodes = null;
-
-  function getVcoNodes() {
-    nodes ??= graphHost.registerModule(moduleRegistry.get("roog-vco")).nodes;
-    return nodes;
-  }
 
   frequency?.addEventListener("input", () => {
-    getVcoNodes().oscillator.frequency.value = Number(frequency.value);
+    const nodes = getModuleNodes("roog-vco");
+
+    setAudioParamValue(nodes?.oscillator.frequency, frequency.value);
   });
   waveform?.addEventListener("input", () => {
-    getVcoNodes().oscillator.type = waveform.value;
+    const nodes = getModuleNodes("roog-vco");
+
+    if (nodes) {
+      nodes.oscillator.type = waveform.value;
+    }
   });
   detune?.addEventListener("input", () => {
-    getVcoNodes().oscillator.detune.value = Number(detune.value);
+    const nodes = getModuleNodes("roog-vco");
+
+    setAudioParamValue(nodes?.oscillator.detune, detune.value);
+  });
+}
+
+function bindVcfControls() {
+  const vcfPanel = rackRow.querySelector('[data-module-id="roog-vcf"]');
+
+  if (!vcfPanel) {
+    return;
+  }
+
+  const cutoff = vcfPanel.querySelector('[data-control-id="cutoff"]');
+  const resonance = vcfPanel.querySelector('[data-control-id="resonance"]');
+
+  cutoff?.addEventListener("input", () => {
+    const nodes = getModuleNodes("roog-vcf");
+
+    setAudioParamValue(nodes?.cutoff, cutoff.value);
+  });
+  resonance?.addEventListener("input", () => {
+    const nodes = getModuleNodes("roog-vcf");
+
+    setAudioParamValue(nodes?.resonance, resonance.value);
+  });
+}
+
+function bindVcaControls() {
+  const vcaPanel = rackRow.querySelector('[data-module-id="roog-vca"]');
+
+  if (!vcaPanel) {
+    return;
+  }
+
+  const level = vcaPanel.querySelector('[data-control-id="level"]');
+
+  level?.addEventListener("input", () => {
+    const nodes = getModuleNodes("roog-vca");
+
+    setAudioParamValue(nodes?.amplitude, level.value);
   });
 }
 

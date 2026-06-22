@@ -24,6 +24,36 @@ function createVcoAudioNodes(audioContext) {
   };
 }
 
+function createVcfAudioNodes(audioContext) {
+  const filter = audioContext.createBiquadFilter();
+  const output = audioContext.createGain();
+
+  filter.type = "lowpass";
+  filter.frequency.value = 1200;
+  filter.Q.value = 1;
+  output.gain.value = 1;
+  filter.connect(output);
+
+  return {
+    input: filter,
+    cutoff: filter.frequency,
+    resonance: filter.Q,
+    output
+  };
+}
+
+function createVcaAudioNodes(audioContext) {
+  const amplifier = audioContext.createGain();
+
+  amplifier.gain.value = 0.75;
+
+  return {
+    input: amplifier,
+    amplitude: amplifier.gain,
+    output: amplifier
+  };
+}
+
 export const placeholderModules = [
   {
     id: "blank-left",
@@ -72,16 +102,59 @@ export const placeholderModules = [
     createAudioNodes: createVcoAudioNodes
   },
   {
-    id: "vcf-placeholder",
+    id: "roog-vcf",
     name: "VCF",
     kind: "processor",
     hp: 14,
-    controls: ["cutoff", "res"],
+    controls: [
+      {
+        id: "cutoff",
+        label: "cutoff",
+        type: "range",
+        min: 80,
+        max: 8000,
+        step: 1,
+        value: 1200
+      },
+      {
+        id: "resonance",
+        label: "res",
+        type: "range",
+        min: 0.1,
+        max: 20,
+        step: 0.1,
+        value: 1
+      }
+    ],
     ports: [
-      { label: "audio", type: "audio", direction: "input" },
-      { label: "audio", type: "audio", direction: "output" },
-      { label: "cutoff", type: "cv", direction: "input" }
-    ]
+      { label: "audio", type: signalTypes.audio, direction: portDirections.input, node: "input" },
+      { label: "audio", type: signalTypes.audio, direction: portDirections.output, node: "output" },
+      { label: "cutoff", type: signalTypes.cv, direction: portDirections.input, node: "cutoff" }
+    ],
+    createAudioNodes: createVcfAudioNodes
+  },
+  {
+    id: "roog-vca",
+    name: "VCA",
+    kind: "processor",
+    hp: 10,
+    controls: [
+      {
+        id: "level",
+        label: "level",
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        value: 0.75
+      }
+    ],
+    ports: [
+      { label: "audio", type: signalTypes.audio, direction: portDirections.input, node: "input" },
+      { label: "audio", type: signalTypes.audio, direction: portDirections.output, node: "output" },
+      { label: "amp", type: signalTypes.cv, direction: portDirections.input, node: "amplitude" }
+    ],
+    createAudioNodes: createVcaAudioNodes
   },
   {
     id: "mod-placeholder",
@@ -109,7 +182,7 @@ export const placeholderModules = [
     id: "blank-right",
     name: "VOID",
     kind: "blank",
-    hp: 24,
+    hp: 14,
     controls: ["future"],
     ports: []
   }

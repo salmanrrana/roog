@@ -115,7 +115,20 @@ class SmokeAudioContext {
   createGain() {
     return {
       gain: { value: 1 },
-      connect() {}
+      connect(target) {
+        this.connectedTarget = target;
+      }
+    };
+  }
+
+  createBiquadFilter() {
+    return {
+      type: "highpass",
+      frequency: { value: 0 },
+      Q: { value: 0 },
+      connect(target) {
+        this.connectedTarget = target;
+      }
     };
   }
 }
@@ -145,6 +158,62 @@ assert.equal(vcoNodes.oscillator.detune.value, 0);
 assert.equal(vcoNodes.output.gain.value, 0.18);
 assert.equal(vcoNodes.oscillator.connectedTarget, vcoNodes.output);
 assert.equal(vcoNodes.oscillator.started, true);
+
+const vcfDefinition = placeholderModules.find((moduleDefinition) => moduleDefinition.id === "roog-vcf");
+assert.ok(vcfDefinition, "VCF module should be registered in the rack shell");
+assert.deepEqual(
+  vcfDefinition.controls.map((control) => control.id),
+  ["cutoff", "resonance"]
+);
+assert.deepEqual(
+  vcfDefinition.ports.map((port) => [port.type, port.direction, port.node]),
+  [
+    [signalTypes.audio, portDirections.input, "input"],
+    [signalTypes.audio, portDirections.output, "output"],
+    [signalTypes.cv, portDirections.input, "cutoff"]
+  ]
+);
+
+const vcaDefinition = placeholderModules.find((moduleDefinition) => moduleDefinition.id === "roog-vca");
+assert.ok(vcaDefinition, "VCA module should be registered in the rack shell");
+assert.deepEqual(
+  vcaDefinition.controls.map((control) => control.id),
+  ["level"]
+);
+assert.deepEqual(
+  vcaDefinition.ports.map((port) => [port.type, port.direction, port.node]),
+  [
+    [signalTypes.audio, portDirections.input, "input"],
+    [signalTypes.audio, portDirections.output, "output"],
+    [signalTypes.cv, portDirections.input, "amplitude"]
+  ]
+);
+assert.equal(
+  placeholderModules.reduce((usedHp, moduleDefinition) => usedHp + moduleDefinition.hp, 0),
+  84,
+  "Rack modules should fill the 84 HP row"
+);
+
+const shapingRegistry = createModuleRegistry();
+const registeredVcf = shapingRegistry.register(vcfDefinition);
+const registeredVca = shapingRegistry.register(vcaDefinition);
+const shapingGraphHost = createAudioGraphHost({ AudioContextClass: SmokeAudioContext });
+const vcfNodes = shapingGraphHost.registerModule(registeredVcf).nodes;
+const vcaNodes = shapingGraphHost.registerModule(registeredVca).nodes;
+assert.equal(vcfNodes.input.type, "lowpass");
+assert.equal(vcfNodes.cutoff.value, 1200);
+assert.equal(vcfNodes.resonance.value, 1);
+assert.equal(vcfNodes.input.connectedTarget, vcfNodes.output);
+assert.equal(vcaNodes.input, vcaNodes.output);
+assert.equal(vcaNodes.amplitude.value, 0.75);
+
+const vcfAudioOut = vcfDefinition.ports.find((port) => port.direction === portDirections.output);
+const vcaAudioIn = vcaDefinition.ports.find(
+  (port) => port.type === signalTypes.audio && port.direction === portDirections.input
+);
+const vcaCvIn = vcaDefinition.ports.find((port) => port.type === signalTypes.cv);
+assert.equal(canPatchPorts(vcfAudioOut, vcaAudioIn), true);
+assert.equal(canPatchPorts(vcfAudioOut, vcaCvIn), false);
 
 assert.equal(isPathInsideRoot(path.join(projectRoot, "index.html")), true);
 assert.equal(isPathInsideRoot(path.resolve(projectRoot, "..", "package.json")), false);
