@@ -25,6 +25,7 @@ const indexHtml = await readProjectFile("index.html");
 const appSource = await readProjectFile("src/app.js");
 const rackSource = await readProjectFile("src/rack-shell.js");
 const netlifyConfig = await readProjectFile("netlify.toml");
+const { isPathInsideRoot } = await import("./dev-server.mjs");
 
 assert.equal(packageJson.type, "module");
 assert.equal(packageJson.scripts.dev, "node scripts/dev-server.mjs");
@@ -43,6 +44,10 @@ assert.match(appSource, /placeholderModules/);
 assert.match(appSource, /data-hp-readout/);
 assert.match(rackSource, /totalHp: 84/);
 assert.match(rackSource, /powerRails/);
+
+assert.equal(isPathInsideRoot(path.join(projectRoot, "index.html")), true);
+assert.equal(isPathInsideRoot(path.resolve(projectRoot, "..", "package.json")), false);
+assert.equal(isPathInsideRoot(`${projectRoot}-shadow/secret.txt`), false);
 
 await assertFileExists("dist/index.html");
 await assertFileExists("dist/src/app.js");
