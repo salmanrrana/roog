@@ -57,7 +57,7 @@ assert.match(netlifyConfig, /publish = "dist"/);
 assert.match(indexHtml, /data-rack/);
 assert.match(indexHtml, /data-rack-row/);
 assert.match(indexHtml, /data-power-bus/);
-assert.match(indexHtml, /Placeholder rack shell/);
+assert.match(indexHtml, /Patchable rack shell/);
 assert.match(indexHtml, /\.\/src\/app\.js/);
 assert.match(indexHtml, /data-status-text/);
 
