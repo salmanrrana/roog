@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="ROOG is a browser-based eurorack simulation scaffold."
+    >
+    <title>ROOG Eurorack</title>
+    <link rel="stylesheet" href="./src/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar" aria-label="ROOG status">
+        <div>
+          <p class="eyebrow">ROOG</p>
+          <h1>Browser Eurorack</h1>
+        </div>
+        <div class="status-strip" aria-label="Project status">
+          <span class="status-light" aria-hidden="true"></span>
+          <span>Patch bay offline</span>
+        </div>
+      </header>
+
+      <main class="stage">
+        <section class="rack" aria-labelledby="rack-title" data-rack>
+          <div class="rack-header">
+            <div>
+              <p class="eyebrow">84 HP test case</p>
+              <h2 id="rack-title">Placeholder rack shell</h2>
+            </div>
+            <div class="hp-readout" data-hp-readout>0 / 84 HP</div>
+          </div>
+
+          <div class="rack-frame">
+            <div class="rail rail-top" aria-hidden="true"></div>
+            <div class="hp-grid" data-hp-grid aria-hidden="true"></div>
+            <div
+              class="module-row"
+              data-rack-row
+              role="list"
+              aria-label="Placeholder eurorack module row"
+            ></div>
+            <div class="rail rail-bottom" aria-hidden="true"></div>
+          </div>
+
+          <div class="power-bus" aria-label="Power distribution bus">
+            <span class="bus-label">Power bus</span>
+            <span class="bus-lane bus-lane-positive">+12V</span>
+            <span class="bus-lane bus-lane-ground">GND</span>
+            <span class="bus-lane bus-lane-negative">-12V</span>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

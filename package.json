@@ -1,13 +1,19 @@
 {
   "name": "roog",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "0.1.0",
+  "description": "Plain HTML/CSS/JS scaffold for the ROOG browser eurorack.",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node scripts/dev-server.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/smoke-test.mjs",
+    "check": "npm run build && npm test"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "keywords": [
+    "eurorack",
+    "synthesizer",
+    "web-audio"
+  ],
+  "license": "UNLICENSED"
 }

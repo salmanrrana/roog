@@ -11,3 +11,13 @@ plans/ralph*.sh
 
 # Local Netlify CLI state
 .netlify/
+
+# Runtime and build output
+node_modules/
+dist/
+
+# Local Ralph session state
+.claude/ralph-state.json
+
+# OS/editor noise
+.DS_Store
