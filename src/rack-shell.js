@@ -11,7 +11,7 @@ export const placeholderModules = [
     kind: "blank",
     hp: 8,
     controls: ["reserve"],
-    jacks: []
+    ports: []
   },
   {
     id: "vco-placeholder",
@@ -19,7 +19,7 @@ export const placeholderModules = [
     kind: "source",
     hp: 16,
     controls: ["freq", "shape", "fine"],
-    jacks: [
+    ports: [
       { label: "1V/OCT", type: "cv", direction: "input" },
       { label: "audio", type: "audio", direction: "output" }
     ]
@@ -30,7 +30,7 @@ export const placeholderModules = [
     kind: "processor",
     hp: 14,
     controls: ["cutoff", "res"],
-    jacks: [
+    ports: [
       { label: "audio", type: "audio", direction: "input" },
       { label: "audio", type: "audio", direction: "output" },
       { label: "cutoff", type: "cv", direction: "input" }
@@ -42,7 +42,7 @@ export const placeholderModules = [
     kind: "modulator",
     hp: 12,
     controls: ["rate", "depth"],
-    jacks: [
+    ports: [
       { label: "cv", type: "cv", direction: "output" },
       { label: "gate", type: "gate", direction: "output" }
     ]
@@ -53,7 +53,7 @@ export const placeholderModules = [
     kind: "output",
     hp: 10,
     controls: ["level"],
-    jacks: [
+    ports: [
       { label: "left", type: "audio", direction: "input" },
       { label: "right", type: "audio", direction: "input" }
     ]
@@ -64,6 +64,6 @@ export const placeholderModules = [
     kind: "blank",
     hp: 24,
     controls: ["future"],
-    jacks: []
+    ports: []
   }
 ];

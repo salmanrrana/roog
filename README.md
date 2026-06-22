@@ -16,4 +16,6 @@ Netlify uses `netlify.toml`:
 - build command: `npm run build`
 - publish directory: `dist`
 
-The current baseline renders a placeholder rack shell that future module, patching, and layout tickets can plug into.
+The current baseline renders a placeholder rack shell backed by a small module registry,
+standard module panel renderer, typed port metadata, and a lazy Web Audio graph host that
+future module, patching, and layout tickets can plug into.
