@@ -28,13 +28,19 @@ export function createAudioGraphHost({ AudioContextClass = globalThis.AudioConte
         return moduleNodes.get(moduleDefinition.id);
       }
 
-      const nodes = moduleDefinition.createAudioNodes
-        ? moduleDefinition.createAudioNodes(ensureContext())
-        : {};
+      let nodes = null;
 
       const registration = {
         moduleId: moduleDefinition.id,
-        nodes,
+        get nodes() {
+          if (!nodes) {
+            nodes = moduleDefinition.createAudioNodes
+              ? moduleDefinition.createAudioNodes(ensureContext())
+              : {};
+          }
+
+          return nodes;
+        },
         ports: moduleDefinition.ports
       };
 

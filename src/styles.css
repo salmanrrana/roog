@@ -252,6 +252,7 @@ h2 {
 .knob {
   display: grid;
   place-items: center;
+  gap: 4px;
   width: min(64px, 82%);
   aspect-ratio: 1;
   border: 8px solid #1b1715;
@@ -268,6 +269,24 @@ h2 {
   text-align: center;
   text-transform: uppercase;
   overflow-wrap: anywhere;
+}
+
+.knob input,
+.knob select {
+  width: min(46px, 90%);
+  min-width: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(23 18 15 / 88%);
+  color: #f8ead0;
+  font-size: 0.54rem;
+  font-weight: 850;
+}
+
+.knob input[type="range"] {
+  height: 6px;
+  padding: 0;
+  accent-color: var(--accent-red);
 }
 
 .jack-bank {

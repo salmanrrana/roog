@@ -72,6 +72,35 @@ function renderRack() {
   statusText.textContent = `${graphHost.registeredModuleCount} modules registered`;
 
   rackRow.replaceChildren(...registeredModules.map((module) => createModulePanel(document, module)));
+  bindVcoControls();
+}
+
+function bindVcoControls() {
+  const vcoPanel = rackRow.querySelector('[data-module-id="roog-vco"]');
+
+  if (!vcoPanel) {
+    return;
+  }
+
+  const frequency = vcoPanel.querySelector('[data-control-id="frequency"]');
+  const waveform = vcoPanel.querySelector('[data-control-id="waveform"]');
+  const detune = vcoPanel.querySelector('[data-control-id="detune"]');
+  let nodes = null;
+
+  function getVcoNodes() {
+    nodes ??= graphHost.registerModule(moduleRegistry.get("roog-vco")).nodes;
+    return nodes;
+  }
+
+  frequency?.addEventListener("input", () => {
+    getVcoNodes().oscillator.frequency.value = Number(frequency.value);
+  });
+  waveform?.addEventListener("input", () => {
+    getVcoNodes().oscillator.type = waveform.value;
+  });
+  detune?.addEventListener("input", () => {
+    getVcoNodes().oscillator.detune.value = Number(detune.value);
+  });
 }
 
 renderRack();

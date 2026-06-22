@@ -1,8 +1,28 @@
+import { portDirections, signalTypes } from "./module-framework.js";
+
 export const rackConfig = {
   totalHp: 84,
   railHeight: "3U",
   powerRails: ["+12V", "GND", "-12V"]
 };
+
+function createVcoAudioNodes(audioContext) {
+  const oscillator = audioContext.createOscillator();
+  const output = audioContext.createGain();
+
+  oscillator.type = "sawtooth";
+  oscillator.frequency.value = 220;
+  oscillator.detune.value = 0;
+  output.gain.value = 0.18;
+  oscillator.connect(output);
+  oscillator.start();
+
+  return {
+    oscillator,
+    pitch: oscillator.frequency,
+    output
+  };
+}
 
 export const placeholderModules = [
   {
@@ -14,15 +34,42 @@ export const placeholderModules = [
     ports: []
   },
   {
-    id: "vco-placeholder",
+    id: "roog-vco",
     name: "VCO",
     kind: "source",
     hp: 16,
-    controls: ["freq", "shape", "fine"],
+    controls: [
+      {
+        id: "frequency",
+        label: "freq",
+        type: "range",
+        min: 32,
+        max: 2000,
+        step: 1,
+        value: 220
+      },
+      {
+        id: "waveform",
+        label: "shape",
+        type: "select",
+        options: ["sine", "square", "sawtooth", "triangle"],
+        value: "sawtooth"
+      },
+      {
+        id: "detune",
+        label: "fine",
+        type: "range",
+        min: -1200,
+        max: 1200,
+        step: 1,
+        value: 0
+      }
+    ],
     ports: [
-      { label: "1V/OCT", type: "cv", direction: "input" },
-      { label: "audio", type: "audio", direction: "output" }
-    ]
+      { label: "1V/OCT", type: signalTypes.cv, direction: portDirections.input, node: "pitch" },
+      { label: "audio", type: signalTypes.audio, direction: portDirections.output, node: "output" }
+    ],
+    createAudioNodes: createVcoAudioNodes
   },
   {
     id: "vcf-placeholder",

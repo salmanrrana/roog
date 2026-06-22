@@ -34,7 +34,8 @@ export function normalizePort(port, moduleId) {
     id: port.id ?? `${moduleId}-${port.direction}-${port.label.toLowerCase().replaceAll(" ", "-")}`,
     label: port.label,
     type: port.type,
-    direction: port.direction
+    direction: port.direction,
+    node: port.node
   };
 
   assertKnownSignalType(normalized.type);
@@ -134,9 +135,37 @@ export function createModulePanel(documentRef, moduleDefinition) {
   controls.setAttribute("aria-label", `${moduleDefinition.name} controls`);
 
   moduleDefinition.controls.forEach((control) => {
-    const controlElement = documentRef.createElement("span");
+    const controlDefinition = typeof control === "string" ? { label: control } : control;
+    const controlElement = documentRef.createElement("label");
     controlElement.className = "knob";
-    controlElement.textContent = control;
+
+    const label = documentRef.createElement("span");
+    label.textContent = controlDefinition.label;
+    controlElement.append(label);
+
+    if (controlDefinition.type) {
+      const input = documentRef.createElement(controlDefinition.type === "select" ? "select" : "input");
+      input.dataset.controlId = controlDefinition.id;
+      input.setAttribute("aria-label", `${moduleDefinition.name} ${controlDefinition.label}`);
+
+      if (controlDefinition.type === "select") {
+        controlDefinition.options.forEach((option) => {
+          const optionElement = documentRef.createElement("option");
+          optionElement.value = option;
+          optionElement.textContent = option;
+          input.append(optionElement);
+        });
+      } else {
+        input.type = controlDefinition.type;
+        input.min = String(controlDefinition.min);
+        input.max = String(controlDefinition.max);
+        input.step = String(controlDefinition.step);
+      }
+
+      input.value = String(controlDefinition.value);
+      controlElement.append(input);
+    }
+
     controls.append(controlElement);
   });
 

@@ -20,6 +20,15 @@ execFileSync(process.execPath, ["scripts/build.mjs"], {
   stdio: "inherit"
 });
 
+["src/app.js", "src/audio-graph-host.js", "src/module-framework.js", "src/rack-shell.js"].forEach(
+  (sourceFile) => {
+    execFileSync(process.execPath, ["--check", sourceFile], {
+      cwd: projectRoot,
+      stdio: "inherit"
+    });
+  }
+);
+
 const packageJson = JSON.parse(await readProjectFile("package.json"));
 const indexHtml = await readProjectFile("index.html");
 const appSource = await readProjectFile("src/app.js");
@@ -29,6 +38,7 @@ const graphHostSource = await readProjectFile("src/audio-graph-host.js");
 const netlifyConfig = await readProjectFile("netlify.toml");
 const { isPathInsideRoot } = await import("./dev-server.mjs");
 const { createAudioGraphHost } = await import("../src/audio-graph-host.js");
+const { placeholderModules } = await import("../src/rack-shell.js");
 const {
   canPatchPorts,
   createModuleRegistry,
@@ -86,6 +96,55 @@ assert.equal(canPatchPorts(targetModule.ports[0], sourceModule.ports[0]), false)
 const graphHost = createAudioGraphHost({ AudioContextClass: class SmokeAudioContext {} });
 graphHost.registerModule(sourceModule);
 assert.equal(graphHost.registeredModuleCount, 1);
+
+class SmokeAudioContext {
+  createOscillator() {
+    return {
+      type: "sine",
+      frequency: { value: 0 },
+      detune: { value: 0 },
+      connect(target) {
+        this.connectedTarget = target;
+      },
+      start() {
+        this.started = true;
+      }
+    };
+  }
+
+  createGain() {
+    return {
+      gain: { value: 1 },
+      connect() {}
+    };
+  }
+}
+
+const vcoDefinition = placeholderModules.find((moduleDefinition) => moduleDefinition.id === "roog-vco");
+assert.ok(vcoDefinition, "VCO module should be registered in the rack shell");
+assert.deepEqual(
+  vcoDefinition.controls.map((control) => control.id),
+  ["frequency", "waveform", "detune"]
+);
+assert.equal(vcoDefinition.ports[0].type, signalTypes.cv);
+assert.equal(vcoDefinition.ports[0].direction, portDirections.input);
+assert.equal(vcoDefinition.ports[0].node, "pitch");
+assert.equal(vcoDefinition.ports[1].type, signalTypes.audio);
+assert.equal(vcoDefinition.ports[1].direction, portDirections.output);
+assert.equal(vcoDefinition.ports[1].node, "output");
+
+const vcoRegistry = createModuleRegistry();
+const registeredVco = vcoRegistry.register(vcoDefinition);
+const vcoGraphHost = createAudioGraphHost({ AudioContextClass: SmokeAudioContext });
+const vcoRegistration = vcoGraphHost.registerModule(registeredVco);
+assert.equal(vcoGraphHost.context, null, "VCO nodes should be lazy until patched or controlled");
+const vcoNodes = vcoRegistration.nodes;
+assert.equal(vcoNodes.oscillator.type, "sawtooth");
+assert.equal(vcoNodes.oscillator.frequency.value, 220);
+assert.equal(vcoNodes.oscillator.detune.value, 0);
+assert.equal(vcoNodes.output.gain.value, 0.18);
+assert.equal(vcoNodes.oscillator.connectedTarget, vcoNodes.output);
+assert.equal(vcoNodes.oscillator.started, true);
 
 assert.equal(isPathInsideRoot(path.join(projectRoot, "index.html")), true);
 assert.equal(isPathInsideRoot(path.resolve(projectRoot, "..", "package.json")), false);
