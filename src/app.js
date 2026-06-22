@@ -1,4 +1,4 @@
-import { placeholderModules, rackConfig } from "./rack-shell.js";
+import { makeFuzzCurve, placeholderModules, rackConfig } from "./rack-shell.js";
 import { createAudioGraphHost } from "./audio-graph-host.js";
 import { canPatchPorts, createModulePanel, createModuleRegistry } from "./module-framework.js";
 
@@ -193,6 +193,33 @@ function setPatchStatus(message) {
   statusText.textContent = message ?? `${graphHost.registeredModuleCount} modules registered · ${patchCount}`;
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function createCablePath(pathData, type, extraClass, patchId) {
+  const path = document.createElementNS(SVG_NS, "path");
+  path.classList.add("patch-cable", `patch-cable-${type}`);
+
+  if (extraClass) {
+    path.classList.add(extraClass);
+  }
+
+  if (patchId) {
+    path.dataset.patchId = patchId;
+  }
+
+  path.setAttribute("d", pathData);
+  return path;
+}
+
+function createPlug(point, type) {
+  const plug = document.createElementNS(SVG_NS, "circle");
+  plug.classList.add("patch-plug", `patch-plug-${type}`);
+  plug.setAttribute("cx", String(point.x));
+  plug.setAttribute("cy", String(point.y));
+  plug.setAttribute("r", "8");
+  return plug;
+}
+
 function renderCableLayer() {
   const frameWidth = Math.max(rackFrame.clientWidth, rackRow.scrollWidth);
   const frameHeight = rackFrame.clientHeight;
@@ -210,22 +237,34 @@ function renderCableLayer() {
       return;
     }
 
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.classList.add("patch-cable", `patch-cable-${patch.source.port.type}`);
-    path.dataset.patchId = patch.id;
-    path.setAttribute("d", getCablePath(getJackPoint(patch.source.jack), getJackPoint(patch.target.jack)));
-    path.setAttribute(
+    const type = patch.source.port.type;
+    const startPoint = getJackPoint(patch.source.jack);
+    const endPoint = getJackPoint(patch.target.jack);
+    const pathData = getCablePath(startPoint, endPoint);
+
+    const core = createCablePath(pathData, type, null, patch.id);
+    core.setAttribute(
       "aria-label",
       `${patch.source.moduleName} ${patch.source.port.label} to ${patch.target.moduleName} ${patch.target.port.label}`
     );
-    cableElements.push(path);
+
+    cableElements.push(
+      createCablePath(pathData, type, "patch-cable-underlay"),
+      core,
+      createCablePath(pathData, type, "patch-cable-sheen"),
+      createPlug(startPoint, type),
+      createPlug(endPoint, type)
+    );
   });
 
   if (activePatchStart && previewPoint) {
-    const preview = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    preview.classList.add("patch-cable", "patch-cable-preview", `patch-cable-${activePatchStart.port.type}`);
-    preview.setAttribute("d", getCablePath(getJackPoint(activePatchStart.jack), previewPoint));
-    cableElements.push(preview);
+    const startPoint = getJackPoint(activePatchStart.jack);
+    const pathData = getCablePath(startPoint, previewPoint);
+
+    cableElements.push(
+      createCablePath(pathData, activePatchStart.port.type, "patch-cable-preview"),
+      createPlug(startPoint, activePatchStart.port.type)
+    );
   }
 
   cableLayer.replaceChildren(...cableElements);
@@ -531,13 +570,85 @@ function bindModuleReordering() {
 const powerButton = document.querySelector("[data-power]");
 const statusStrip = document.querySelector(".status-strip");
 const rackFramePower = document.querySelector(".rack-frame");
-const exampleConnections = [
-  ["roog-vco", "audio", "output", "roog-vcf", "audio", "input"],
-  ["roog-vcf", "audio", "output", "roog-vca", "audio", "input"],
-  ["roog-vca", "audio", "output", "output-placeholder", "left", "input"],
-  ["roog-vca", "audio", "output", "output-placeholder", "right", "input"],
-  ["roog-lfo", "cv", "output", "roog-vcf", "cutoff", "input"],
-  ["roog-envelope", "cv", "output", "roog-vca", "amp", "input"]
+const presetSelect = document.querySelector("[data-preset]");
+
+const presets = [
+  {
+    id: "classic-bass",
+    name: "Classic Bass",
+    blurb: "Moog-style subtractive growl",
+    connections: [
+      ["roog-vco", "audio", "output", "roog-vcf", "audio", "input"],
+      ["roog-vcf", "audio", "output", "roog-vca", "audio", "input"],
+      ["roog-vca", "audio", "output", "output-placeholder", "left", "input"],
+      ["roog-vca", "audio", "output", "output-placeholder", "right", "input"],
+      ["roog-lfo", "cv", "output", "roog-vcf", "cutoff", "input"],
+      ["roog-envelope", "cv", "output", "roog-vca", "amp", "input"]
+    ],
+    controls: {
+      "roog-vco": { frequency: 110, waveform: "sawtooth", detune: 0 },
+      "roog-vcf": { cutoff: 420, resonance: 7 },
+      "roog-lfo": { rate: 0.25, waveform: "sine", depth: 520 },
+      "roog-vca": { level: 0.22 }
+    }
+  },
+  {
+    id: "fuzz-storm",
+    name: "Fuzz Storm",
+    blurb: "VCO slammed through the FANG into a screaming filter",
+    connections: [
+      ["roog-vco", "audio", "output", "roog-drive", "audio", "input"],
+      ["roog-drive", "audio", "output", "roog-vcf", "audio", "input"],
+      ["roog-vcf", "audio", "output", "roog-vca", "audio", "input"],
+      ["roog-vca", "audio", "output", "output-placeholder", "left", "input"],
+      ["roog-vca", "audio", "output", "output-placeholder", "right", "input"],
+      ["roog-lfo", "cv", "output", "roog-vcf", "cutoff", "input"],
+      ["roog-envelope", "cv", "output", "roog-vca", "amp", "input"]
+    ],
+    controls: {
+      "roog-vco": { frequency: 70, waveform: "square", detune: 7 },
+      "roog-drive": { drive: 42, tone: 2600, level: 0.6 },
+      "roog-vcf": { cutoff: 1600, resonance: 9 },
+      "roog-lfo": { rate: 5, waveform: "triangle", depth: 900 },
+      "roog-vca": { level: 0.3 }
+    }
+  },
+  {
+    id: "noise-wash",
+    name: "Noise Wash",
+    blurb: "Filtered noise drifting through SPACE echo",
+    connections: [
+      ["roog-noise", "noise", "output", "roog-vcf", "audio", "input"],
+      ["roog-vcf", "audio", "output", "roog-space", "audio", "input"],
+      ["roog-space", "audio", "output", "roog-mix", "a", "input"],
+      ["roog-mix", "sum", "output", "output-placeholder", "left", "input"],
+      ["roog-mix", "sum", "output", "output-placeholder", "right", "input"],
+      ["roog-lfo", "cv", "output", "roog-vcf", "cutoff", "input"]
+    ],
+    controls: {
+      "roog-noise": { color: 4200, level: 0.4 },
+      "roog-vcf": { cutoff: 640, resonance: 4 },
+      "roog-space": { time: 0.6, feedback: 0.7, mix: 0.72 },
+      "roog-lfo": { rate: 0.12, waveform: "sine", depth: 520 },
+      "roog-mix": { levelA: 0.85, levelB: 0 }
+    }
+  },
+  {
+    id: "mic-mangler",
+    name: "Mic Mangler",
+    blurb: "Arm MIC IN, then drown your voice in fuzz and echo",
+    connections: [
+      ["roog-audio-input", "audio", "output", "roog-drive", "audio", "input"],
+      ["roog-drive", "audio", "output", "roog-space", "audio", "input"],
+      ["roog-space", "audio", "output", "output-placeholder", "left", "input"],
+      ["roog-space", "audio", "output", "output-placeholder", "right", "input"]
+    ],
+    controls: {
+      "roog-audio-input": { level: 0.9 },
+      "roog-drive": { drive: 26, tone: 3200, level: 0.5 },
+      "roog-space": { time: 0.28, feedback: 0.55, mix: 0.5 }
+    }
+  }
 ];
 
 function findJack(moduleId, portLabel, direction) {
@@ -573,32 +684,18 @@ function setControlValue(moduleId, controlId, value) {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-function setExamplePatchDefaults() {
-  setControlValue("roog-vco", "frequency", 110);
-  setControlValue("roog-vcf", "cutoff", 420);
-  setControlValue("roog-vcf", "resonance", 7);
-  setControlValue("roog-lfo", "rate", 0.25);
-  setControlValue("roog-lfo", "depth", 520);
-  setControlValue("roog-vca", "level", 0.22);
+function applyPresetControls(controls) {
+  Object.entries(controls ?? {}).forEach(([moduleId, moduleControls]) => {
+    Object.entries(moduleControls).forEach(([controlId, value]) => {
+      setControlValue(moduleId, controlId, value);
+    });
+  });
 }
 
-function clearAllPatches() {
-  while (patches.length > 0) {
-    const [patch] = patches.splice(0, 1);
-    graphHost.disconnect(patch.connectionId);
-  }
-
-  clearActivePatch();
-  renderCableLayer();
-  setPatchStatus("Patch bay cleared · fresh slate");
-}
-
-function loadExamplePatch() {
-  clearAllPatches();
-
+function connectPresetCables(connections) {
   let connected = 0;
 
-  exampleConnections.forEach(([srcModule, srcLabel, srcDir, tgtModule, tgtLabel, tgtDir]) => {
+  connections.forEach(([srcModule, srcLabel, srcDir, tgtModule, tgtLabel, tgtDir]) => {
     const srcJack = findJack(srcModule, srcLabel, srcDir);
     const tgtJack = findJack(tgtModule, tgtLabel, tgtDir);
 
@@ -615,13 +712,67 @@ function loadExamplePatch() {
     }
   });
 
-  setExamplePatchDefaults();
+  return connected;
+}
+
+function clearAllPatches() {
+  while (patches.length > 0) {
+    const [patch] = patches.splice(0, 1);
+    graphHost.disconnect(patch.connectionId);
+  }
+
+  clearActivePatch();
+  renderCableLayer();
+
+  if (presetSelect) {
+    presetSelect.value = "";
+  }
+
+  setPatchStatus("Patch bay cleared · fresh slate · pick a preset or patch your own");
+}
+
+function loadPreset(presetId) {
+  const preset = presets.find((candidate) => candidate.id === presetId);
+
+  if (!preset) {
+    return;
+  }
+
+  clearAllPatches();
+  applyPresetControls(preset.controls);
+
+  const connected = connectPresetCables(preset.connections);
+
+  if (presetSelect) {
+    presetSelect.value = preset.id;
+  }
+
   renderCableLayer();
   setPatchStatus(
     connected > 0
-      ? `Example patch loaded · ${connected} cables · power on to play`
-      : "Example patch could not load"
+      ? `${preset.name} loaded · ${connected} cables · ${preset.blurb}`
+      : `${preset.name} could not load`
   );
+}
+
+function populatePresetSelect() {
+  if (!presetSelect) {
+    return;
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "— custom patch —";
+  placeholder.disabled = true;
+
+  const options = presets.map((preset) => {
+    const option = document.createElement("option");
+    option.value = preset.id;
+    option.textContent = preset.name;
+    return option;
+  });
+
+  presetSelect.replaceChildren(placeholder, ...options);
 }
 
 async function togglePower() {
@@ -659,9 +810,18 @@ async function togglePower() {
   );
 }
 
+function loadSurprisePreset() {
+  const candidates = presets.filter((preset) => preset.id !== presetSelect?.value);
+  const pool = candidates.length > 0 ? candidates : presets;
+  const choice = pool[Math.floor(Math.random() * pool.length)];
+
+  loadPreset(choice.id);
+}
+
 function bindControlBar() {
   powerButton?.addEventListener("click", togglePower);
-  document.querySelector("[data-load-patch]")?.addEventListener("click", loadExamplePatch);
+  presetSelect?.addEventListener("change", () => loadPreset(presetSelect.value));
+  document.querySelector("[data-surprise]")?.addEventListener("click", loadSurprisePreset);
   document.querySelector("[data-clear]")?.addEventListener("click", clearAllPatches);
 }
 
@@ -683,6 +843,7 @@ function createRackModulePanel(moduleDefinition) {
 function renderRack() {
   const registeredModules = getOrderedModules();
 
+  rackFrame.style.setProperty("--rack-hp", String(rackConfig.totalHp));
   createHpGrid(rackConfig.totalHp);
   renderPowerBus(rackConfig.powerRails);
 
@@ -710,10 +871,64 @@ function setAudioParamValue(audioParam, value) {
 function bindModuleControls() {
   bindAudioInputControls();
   bindVcoControls();
+  bindNoiseControls();
   bindVcfControls();
+  bindDriveControls();
   bindVcaControls();
+  bindSpaceControls();
   bindLfoControls();
   bindEnvelopeControls();
+  bindMixControls();
+}
+
+function bindParamControls(moduleId, paramByControlId) {
+  const panel = rackRow.querySelector(`[data-module-id="${moduleId}"]`);
+
+  if (!panel) {
+    return;
+  }
+
+  Object.entries(paramByControlId).forEach(([controlId, nodeKey]) => {
+    const input = panel.querySelector(`[data-control-id="${controlId}"]`);
+
+    input?.addEventListener("input", () => {
+      setAudioParamValue(getModuleNodes(moduleId)?.[nodeKey], input.value);
+    });
+  });
+}
+
+function bindNoiseControls() {
+  bindParamControls("roog-noise", { color: "color", level: "level" });
+}
+
+function bindDriveControls() {
+  const panel = rackRow.querySelector('[data-module-id="roog-drive"]');
+
+  if (!panel) {
+    return;
+  }
+
+  bindParamControls("roog-drive", { tone: "tone", level: "level" });
+
+  const drive = panel.querySelector('[data-control-id="drive"]');
+
+  drive?.addEventListener("input", () => {
+    const nodes = getModuleNodes("roog-drive");
+
+    setAudioParamValue(nodes?.drive, drive.value);
+
+    if (nodes?.shaper) {
+      nodes.shaper.curve = makeFuzzCurve(Number(drive.value));
+    }
+  });
+}
+
+function bindSpaceControls() {
+  bindParamControls("roog-space", { time: "time", feedback: "feedback", mix: "mix" });
+}
+
+function bindMixControls() {
+  bindParamControls("roog-mix", { levelA: "levelA", levelB: "levelB" });
 }
 
 function bindAudioInputControls() {
@@ -906,5 +1121,6 @@ function triggerEnvelope(nodes) {
 renderRack();
 bindPatchCables();
 bindModuleReordering();
+populatePresetSelect();
 bindControlBar();
-loadExamplePatch();
+loadPreset("classic-bass");

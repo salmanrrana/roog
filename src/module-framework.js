@@ -132,6 +132,20 @@ function applyKnobRotation(pointer, rotation) {
   pointer.style.transform = `translateX(-50%) rotate(${rotation}deg)`;
 }
 
+function formatKnobValue(input) {
+  const value = Number(input.value);
+
+  if (!Number.isFinite(value)) {
+    return String(input.value);
+  }
+
+  if (Math.abs(value) >= 100 || Number.isInteger(value)) {
+    return String(Math.round(value));
+  }
+
+  return value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
 function createKnobControl(documentRef, controlDefinition, moduleDefinition) {
   const label = documentRef.createElement("label");
   label.className = "control control-range knob";
@@ -146,6 +160,10 @@ function createKnobControl(documentRef, controlDefinition, moduleDefinition) {
   const pointer = documentRef.createElement("span");
   pointer.className = "knob-pointer";
   pointer.setAttribute("aria-hidden", "true");
+
+  const readout = documentRef.createElement("span");
+  readout.className = "knob-value";
+  readout.setAttribute("aria-hidden", "true");
 
   const controlLabel = documentRef.createElement("span");
   controlLabel.className = "control-label";
@@ -172,11 +190,13 @@ function createKnobControl(documentRef, controlDefinition, moduleDefinition) {
   input.value = String(controlDefinition.value);
 
   applyKnobRotation(pointer, getKnobRotation(input));
+  readout.textContent = formatKnobValue(input);
   input.addEventListener("input", () => {
     applyKnobRotation(pointer, getKnobRotation(input));
+    readout.textContent = formatKnobValue(input);
   });
 
-  dial.append(ticks, pointer);
+  dial.append(ticks, pointer, readout);
   label.append(dial, controlLabel, input);
   return label;
 }
@@ -224,12 +244,73 @@ function createButtonControl(documentRef, controlDefinition, moduleDefinition) {
   return label;
 }
 
+function createSliderControl(documentRef, controlDefinition, moduleDefinition) {
+  const label = documentRef.createElement("label");
+  label.className = "control control-slider";
+
+  const track = documentRef.createElement("span");
+  track.className = "slider-track";
+
+  const input = documentRef.createElement("input");
+  input.type = "range";
+  input.className = "slider-input";
+  input.dataset.controlId = controlDefinition.id;
+  input.setAttribute("aria-label", `${moduleDefinition.name} ${controlDefinition.label}`);
+
+  if (controlDefinition.min !== undefined) {
+    input.min = String(controlDefinition.min);
+  }
+
+  if (controlDefinition.max !== undefined) {
+    input.max = String(controlDefinition.max);
+  }
+
+  if (controlDefinition.step !== undefined) {
+    input.step = String(controlDefinition.step);
+  }
+
+  input.value = String(controlDefinition.value);
+
+  const controlLabel = documentRef.createElement("span");
+  controlLabel.className = "control-label";
+  controlLabel.textContent = controlDefinition.label;
+
+  track.append(input);
+  label.append(track, controlLabel);
+  return label;
+}
+
+function createScopeControl(documentRef, controlDefinition, moduleDefinition) {
+  const wrap = documentRef.createElement("div");
+  wrap.className = "control control-scope";
+
+  const canvas = documentRef.createElement("canvas");
+  canvas.className = "scope-screen";
+  canvas.dataset.scope = controlDefinition.id ?? "scope";
+  canvas.width = controlDefinition.width ?? 280;
+  canvas.height = controlDefinition.height ?? 130;
+  canvas.setAttribute("role", "img");
+  canvas.setAttribute("aria-label", `${moduleDefinition.name} ${controlDefinition.label ?? "display"}`);
+
+  const controlLabel = documentRef.createElement("span");
+  controlLabel.className = "control-label";
+  controlLabel.textContent = controlDefinition.label ?? "scope";
+
+  wrap.append(canvas, controlLabel);
+  return wrap;
+}
+
 function createControl(documentRef, controlDefinition, moduleDefinition) {
   switch (controlDefinition.type) {
     case "select":
       return createSelectControl(documentRef, controlDefinition, moduleDefinition);
     case "button":
       return createButtonControl(documentRef, controlDefinition, moduleDefinition);
+    case "slider":
+      return createSliderControl(documentRef, controlDefinition, moduleDefinition);
+    case "scope":
+    case "display":
+      return createScopeControl(documentRef, controlDefinition, moduleDefinition);
     case "range":
     default:
       return createKnobControl(documentRef, controlDefinition, moduleDefinition);
@@ -251,10 +332,28 @@ export function createModulePanel(documentRef, moduleDefinition) {
   name.className = "module-name";
   name.textContent = moduleDefinition.name;
 
+  const meta = documentRef.createElement("span");
+  meta.className = "module-meta";
+
+  const kindLabels = {
+    source: "SRC",
+    processor: "FX",
+    modulator: "MOD",
+    utility: "UTIL",
+    output: "OUT"
+  };
+
+  const kind = documentRef.createElement("small");
+  kind.className = "module-kind-tag";
+  kind.textContent =
+    moduleDefinition.tag ?? kindLabels[moduleDefinition.kind] ?? (moduleDefinition.kind ?? "").toUpperCase();
+
   const hp = documentRef.createElement("small");
   hp.className = "module-hp";
   hp.textContent = formatHp(moduleDefinition.hp);
-  title.append(name, hp);
+
+  meta.append(kind, hp);
+  title.append(name, meta);
 
   const controls = documentRef.createElement("div");
   controls.className = "control-bank";

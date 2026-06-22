@@ -18,6 +18,7 @@ dist/
 
 # Local Ralph session state
 .claude/ralph-state.json
+.claude/capture-token-usage.log
 
 # OS/editor noise
 .DS_Store

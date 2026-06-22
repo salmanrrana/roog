@@ -5,34 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta
       name="description"
-      content="ROOG is a browser-based eurorack. Patch modules, route signal, make it loud."
+      content="ROOG Studio is a VCV-inspired virtual modular rack. Patch a self-playing sequencer into an oscilloscope and reverb, with cables that hang like the real thing."
     >
-    <title>ROOG — Browser Eurorack</title>
+    <title>ROOG Studio — Virtual Modular Rack</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-      href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
       rel="stylesheet"
     >
-    <link rel="stylesheet" href="./src/styles.css">
+    <link rel="stylesheet" href="./src/studio.css">
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar" aria-label="ROOG status">
+      <header class="topbar" aria-label="ROOG Studio status">
         <div class="brand">
-          <p class="brand-tag">Browser eurorack</p>
-          <h1 class="logo">ROOG</h1>
-          <p class="brand-sub">Browser eurorack · patch it loud · break things</p>
+          <p class="brand-tag">Virtual modular · cables included</p>
+          <h1 class="logo">ROOG <span class="logo-sub">STUDIO</span></h1>
+          <p class="brand-sub">VCV-inspired rack · hit POWER and it plays itself</p>
         </div>
         <div class="status-cluster">
-          <a class="page-link" href="./studio.html">Studio mode →</a>
-          <div class="vu-meter" data-vu aria-hidden="true">
-            <span></span><span></span><span></span><span></span>
-            <span></span><span></span><span></span>
-          </div>
+          <a class="page-link" href="./index.html">← Patch bay</a>
           <div class="status-strip" aria-label="Project status">
             <span class="status-light" data-status-light aria-hidden="true"></span>
-            <span data-status-text>Patch bay armed</span>
+            <span data-status-text>Rack powered down</span>
           </div>
         </div>
       </header>
@@ -49,24 +45,24 @@
         </label>
 
         <button class="ctrl-btn ctrl-surprise" data-surprise type="button">
-          <span class="ctrl-label">⚡ Surprise me</span>
+          <span class="ctrl-label">🎲 Surprise me</span>
         </button>
 
         <button class="ctrl-btn ctrl-warn" data-clear type="button">
           <span class="ctrl-label">Clear</span>
         </button>
 
-        <span class="hp-readout" data-hp-readout aria-label="Rack capacity">0 / 112 HP</span>
+        <span class="hp-readout" data-hp-readout aria-label="Rack capacity">0 / 124 HP</span>
       </div>
 
       <main class="stage">
         <section class="rack" aria-labelledby="rack-title" data-rack>
           <div class="rack-header">
             <div class="rack-title-block">
-              <h2 id="rack-title" class="case-label">Powered case</h2>
-              <p class="case-sub">Patchable rack shell</p>
+              <h2 id="rack-title" class="case-label">Studio rack</h2>
+              <p class="case-sub">Patchable rack shell · hit POWER to play</p>
             </div>
-            <p class="case-spec">112HP · 3U · ±12V</p>
+            <p class="case-spec">124HP · 3U · ±12V</p>
           </div>
 
           <div class="case">
@@ -76,8 +72,7 @@
             </span>
 
             <div class="rack-frame">
-              <div class="hazard hazard-top" aria-hidden="true"></div>
-              <span class="case-stamp" aria-hidden="true">⚡ High voltage — do not touch the rails</span>
+              <span class="case-stamp" aria-hidden="true">ROOG · 3U powered rack · patch responsibly</span>
               <span class="screw-cross screw-left" aria-hidden="true"></span>
               <span class="screw-cross screw-right" aria-hidden="true"></span>
               <div class="rail rail-top" aria-hidden="true"></div>
@@ -86,7 +81,7 @@
                 class="module-row"
                 data-rack-row
                 role="list"
-                aria-label="Eurorack module row"
+                aria-label="Virtual modular row"
               ></div>
               <svg
                 class="patch-cable-layer"
@@ -94,7 +89,6 @@
                 aria-label="Patch cables"
               ></svg>
               <div class="rail rail-bottom" aria-hidden="true"></div>
-              <div class="hazard hazard-bottom" aria-hidden="true"></div>
             </div>
 
             <span class="case-cheek case-cheek-right" aria-hidden="true">
@@ -110,11 +104,11 @@
       </main>
 
       <footer class="footnote" aria-hidden="true">
-        <span class="footnote-mark">⚡</span>
-        <span>High voltage · unpatched cables carry signal · mind the rails</span>
+        <span class="footnote-mark">♪</span>
+        <span>Hit POWER — sequencer, drums and random all start · drag a cable to repatch · watch the scope</span>
       </footer>
     </div>
 
-    <script type="module" src="./src/app.js"></script>
+    <script type="module" src="./src/studio.js"></script>
   </body>
 </html>

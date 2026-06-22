@@ -1,10 +1,24 @@
 import { portDirections, signalTypes } from "./module-framework.js";
 
 export const rackConfig = {
-  totalHp: 84,
+  totalHp: 112,
   railHeight: "3U",
   powerRails: ["+12V", "GND", "-12V"]
 };
+
+/** Build a hard, asymmetric clipping curve for the fuzz waveshaper. */
+export function makeFuzzCurve(amount) {
+  const samples = 1024;
+  const curve = new Float32Array(samples);
+  const k = Math.max(1, amount);
+
+  for (let i = 0; i < samples; i += 1) {
+    const x = (i * 2) / samples - 1;
+    curve[i] = ((1 + k) * x) / (1 + k * Math.abs(x));
+  }
+
+  return curve;
+}
 
 function createVcoAudioNodes(audioContext) {
   const oscillator = audioContext.createOscillator();
@@ -89,6 +103,112 @@ function createEnvelopeAudioNodes(audioContext) {
     decay: { value: 0.2 },
     sustain: { value: 0.6 },
     release: { value: 0.4 },
+    output
+  };
+}
+
+function createNoiseAudioNodes(audioContext) {
+  const output = audioContext.createGain();
+  const color = audioContext.createBiquadFilter();
+  const bufferSize = 2 * audioContext.sampleRate;
+  const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+  const channel = buffer.getChannelData(0);
+
+  for (let i = 0; i < bufferSize; i += 1) {
+    channel[i] = Math.random() * 2 - 1;
+  }
+
+  const source = audioContext.createBufferSource();
+
+  source.buffer = buffer;
+  source.loop = true;
+  color.type = "lowpass";
+  color.frequency.value = 6000;
+  output.gain.value = 0.35;
+  source.connect(color);
+  color.connect(output);
+  source.start();
+
+  return {
+    source,
+    color: color.frequency,
+    level: output.gain,
+    output
+  };
+}
+
+function createDriveAudioNodes(audioContext) {
+  const input = audioContext.createGain();
+  const shaper = audioContext.createWaveShaper();
+  const tone = audioContext.createBiquadFilter();
+  const output = audioContext.createGain();
+
+  input.gain.value = 6;
+  shaper.curve = makeFuzzCurve(6);
+  shaper.oversample = "4x";
+  tone.type = "lowpass";
+  tone.frequency.value = 3200;
+  output.gain.value = 0.7;
+  input.connect(shaper);
+  shaper.connect(tone);
+  tone.connect(output);
+
+  return {
+    input,
+    drive: input.gain,
+    shaper,
+    tone: tone.frequency,
+    level: output.gain,
+    output
+  };
+}
+
+function createSpaceAudioNodes(audioContext) {
+  const input = audioContext.createGain();
+  const dry = audioContext.createGain();
+  const delay = audioContext.createDelay(2);
+  const feedback = audioContext.createGain();
+  const wet = audioContext.createGain();
+  const output = audioContext.createGain();
+
+  dry.gain.value = 0.85;
+  delay.delayTime.value = 0.32;
+  feedback.gain.value = 0.42;
+  wet.gain.value = 0.55;
+  output.gain.value = 0.9;
+  input.connect(dry);
+  dry.connect(output);
+  input.connect(delay);
+  delay.connect(feedback);
+  feedback.connect(delay);
+  delay.connect(wet);
+  wet.connect(output);
+
+  return {
+    input,
+    time: delay.delayTime,
+    feedback: feedback.gain,
+    mix: wet.gain,
+    output
+  };
+}
+
+function createMixAudioNodes(audioContext) {
+  const a = audioContext.createGain();
+  const b = audioContext.createGain();
+  const output = audioContext.createGain();
+
+  a.gain.value = 0.7;
+  b.gain.value = 0.7;
+  output.gain.value = 0.9;
+  a.connect(output);
+  b.connect(output);
+
+  return {
+    a,
+    b,
+    levelA: a.gain,
+    levelB: b.gain,
     output
   };
 }
@@ -214,6 +334,36 @@ export const placeholderModules = [
     createAudioNodes: createVcoAudioNodes
   },
   {
+    id: "roog-noise",
+    name: "NOISE",
+    kind: "source",
+    hp: 6,
+    controls: [
+      {
+        id: "color",
+        label: "color",
+        type: "range",
+        min: 200,
+        max: 12000,
+        step: 1,
+        value: 6000
+      },
+      {
+        id: "level",
+        label: "level",
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        value: 0.35
+      }
+    ],
+    ports: [
+      { label: "noise", type: signalTypes.audio, direction: portDirections.output, node: "output" }
+    ],
+    createAudioNodes: createNoiseAudioNodes
+  },
+  {
     id: "roog-vcf",
     name: "VCF",
     kind: "processor",
@@ -246,6 +396,47 @@ export const placeholderModules = [
     createAudioNodes: createVcfAudioNodes
   },
   {
+    id: "roog-drive",
+    name: "FANG",
+    kind: "processor",
+    hp: 8,
+    controls: [
+      {
+        id: "drive",
+        label: "fuzz",
+        type: "range",
+        min: 1,
+        max: 60,
+        step: 0.5,
+        value: 6
+      },
+      {
+        id: "tone",
+        label: "tone",
+        type: "range",
+        min: 400,
+        max: 9000,
+        step: 1,
+        value: 3200
+      },
+      {
+        id: "level",
+        label: "level",
+        type: "range",
+        min: 0,
+        max: 1.2,
+        step: 0.01,
+        value: 0.7
+      }
+    ],
+    ports: [
+      { label: "audio", type: signalTypes.audio, direction: portDirections.input, node: "input" },
+      { label: "audio", type: signalTypes.audio, direction: portDirections.output, node: "output" },
+      { label: "fuzz", type: signalTypes.cv, direction: portDirections.input, node: "drive" }
+    ],
+    createAudioNodes: createDriveAudioNodes
+  },
+  {
     id: "roog-vca",
     name: "VCA",
     kind: "processor",
@@ -267,6 +458,47 @@ export const placeholderModules = [
       { label: "amp", type: signalTypes.cv, direction: portDirections.input, node: "amplitude" }
     ],
     createAudioNodes: createVcaAudioNodes
+  },
+  {
+    id: "roog-space",
+    name: "SPACE",
+    kind: "processor",
+    hp: 14,
+    controls: [
+      {
+        id: "time",
+        label: "time",
+        type: "range",
+        min: 0.02,
+        max: 1.5,
+        step: 0.01,
+        value: 0.32
+      },
+      {
+        id: "feedback",
+        label: "regen",
+        type: "range",
+        min: 0,
+        max: 0.95,
+        step: 0.01,
+        value: 0.42
+      },
+      {
+        id: "mix",
+        label: "mix",
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        value: 0.55
+      }
+    ],
+    ports: [
+      { label: "audio", type: signalTypes.audio, direction: portDirections.input, node: "input" },
+      { label: "audio", type: signalTypes.audio, direction: portDirections.output, node: "output" },
+      { label: "time", type: signalTypes.cv, direction: portDirections.input, node: "time" }
+    ],
+    createAudioNodes: createSpaceAudioNodes
   },
   {
     id: "roog-lfo",
@@ -361,6 +593,38 @@ export const placeholderModules = [
     createAudioNodes: createEnvelopeAudioNodes
   },
   {
+    id: "roog-mix",
+    name: "MIX",
+    kind: "utility",
+    hp: 8,
+    controls: [
+      {
+        id: "levelA",
+        label: "ch a",
+        type: "range",
+        min: 0,
+        max: 1.2,
+        step: 0.01,
+        value: 0.7
+      },
+      {
+        id: "levelB",
+        label: "ch b",
+        type: "range",
+        min: 0,
+        max: 1.2,
+        step: 0.01,
+        value: 0.7
+      }
+    ],
+    ports: [
+      { label: "a", type: signalTypes.audio, direction: portDirections.input, node: "a" },
+      { label: "b", type: signalTypes.audio, direction: portDirections.input, node: "b" },
+      { label: "sum", type: signalTypes.audio, direction: portDirections.output, node: "output" }
+    ],
+    createAudioNodes: createMixAudioNodes
+  },
+  {
     id: "output-placeholder",
     name: "OUT",
     kind: "output",
@@ -371,13 +635,5 @@ export const placeholderModules = [
       { label: "right", type: "audio", direction: "input", node: "right" }
     ],
     createAudioNodes: createOutputAudioNodes
-  },
-  {
-    id: "blank-right",
-    name: "VOID",
-    kind: "blank",
-    hp: 8,
-    controls: ["future"],
-    ports: []
   }
 ];
