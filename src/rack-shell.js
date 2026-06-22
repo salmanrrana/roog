@@ -295,8 +295,8 @@ export const placeholderModules = [
         label: "depth",
         type: "range",
         min: 0,
-        max: 1,
-        step: 0.01,
+        max: 2000,
+        step: 1,
         value: 1
       }
     ],

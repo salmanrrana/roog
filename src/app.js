@@ -528,6 +528,143 @@ function bindModuleReordering() {
   document.addEventListener("pointercancel", clearModuleDrag);
 }
 
+const powerButton = document.querySelector("[data-power]");
+const statusStrip = document.querySelector(".status-strip");
+const rackFramePower = document.querySelector(".rack-frame");
+const exampleConnections = [
+  ["roog-vco", "audio", "output", "roog-vcf", "audio", "input"],
+  ["roog-vcf", "audio", "output", "roog-vca", "audio", "input"],
+  ["roog-vca", "audio", "output", "output-placeholder", "left", "input"],
+  ["roog-vca", "audio", "output", "output-placeholder", "right", "input"],
+  ["roog-lfo", "cv", "output", "roog-vcf", "cutoff", "input"],
+  ["roog-envelope", "cv", "output", "roog-vca", "amp", "input"]
+];
+
+function findJack(moduleId, portLabel, direction) {
+  const moduleDefinition = moduleRegistry.get(moduleId);
+
+  if (!moduleDefinition) {
+    return null;
+  }
+
+  const port = moduleDefinition.ports.find(
+    (candidate) =>
+      candidate.label.toLowerCase() === portLabel.toLowerCase() && candidate.direction === direction
+  );
+
+  if (!port) {
+    return null;
+  }
+
+  return rackRow.querySelector(
+    `.jack[data-module-id="${moduleId}"][data-port-id="${port.id}"]`
+  );
+}
+
+function setControlValue(moduleId, controlId, value) {
+  const panel = rackRow.querySelector(`[data-module-id="${moduleId}"]`);
+  const input = panel?.querySelector(`[data-control-id="${controlId}"]`);
+
+  if (!input) {
+    return;
+  }
+
+  input.value = String(value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function setExamplePatchDefaults() {
+  setControlValue("roog-vco", "frequency", 110);
+  setControlValue("roog-vcf", "cutoff", 420);
+  setControlValue("roog-vcf", "resonance", 7);
+  setControlValue("roog-lfo", "rate", 0.25);
+  setControlValue("roog-lfo", "depth", 520);
+  setControlValue("roog-vca", "level", 0.22);
+}
+
+function clearAllPatches() {
+  while (patches.length > 0) {
+    const [patch] = patches.splice(0, 1);
+    graphHost.disconnect(patch.connectionId);
+  }
+
+  clearActivePatch();
+  renderCableLayer();
+  setPatchStatus("Patch bay cleared · fresh slate");
+}
+
+function loadExamplePatch() {
+  clearAllPatches();
+
+  let connected = 0;
+
+  exampleConnections.forEach(([srcModule, srcLabel, srcDir, tgtModule, tgtLabel, tgtDir]) => {
+    const srcJack = findJack(srcModule, srcLabel, srcDir);
+    const tgtJack = findJack(tgtModule, tgtLabel, tgtDir);
+
+    if (!srcJack || !tgtJack) {
+      return;
+    }
+
+    const src = getPortDescriptor(srcJack);
+    const tgt = getPortDescriptor(tgtJack);
+
+    if (src && tgt) {
+      connectPatch(src, tgt);
+      connected += 1;
+    }
+  });
+
+  setExamplePatchDefaults();
+  renderCableLayer();
+  setPatchStatus(
+    connected > 0
+      ? `Example patch loaded · ${connected} cables · power on to play`
+      : "Example patch could not load"
+  );
+}
+
+async function togglePower() {
+  if (!powerButton) {
+    return;
+  }
+
+  const isOn = powerButton.getAttribute("aria-pressed") === "true";
+
+  if (isOn) {
+    await graphHost.context?.suspend?.();
+    powerButton.setAttribute("aria-pressed", "false");
+    statusStrip?.removeAttribute("data-power");
+    rackFramePower?.removeAttribute("data-power");
+    setPatchStatus("Powered off · rack silent");
+    return;
+  }
+
+  if (!graphHost.context) {
+    const anyModule = moduleRegistry.list()[0];
+
+    if (anyModule) {
+      graphHost.registerModule(anyModule).nodes;
+    }
+  }
+
+  await graphHost.context?.resume?.();
+  powerButton.setAttribute("aria-pressed", "true");
+  statusStrip?.setAttribute("data-power", "on");
+  rackFramePower?.setAttribute("data-power", "on");
+  setPatchStatus(
+    patches.length > 0
+      ? `Powered on · ${patches.length} cables live · hit ENV trig to play`
+      : "Powered on · patch a signal to play"
+  );
+}
+
+function bindControlBar() {
+  powerButton?.addEventListener("click", togglePower);
+  document.querySelector("[data-load-patch]")?.addEventListener("click", loadExamplePatch);
+  document.querySelector("[data-clear]")?.addEventListener("click", clearAllPatches);
+}
+
 function createRackModulePanel(moduleDefinition) {
   const panel = createModulePanel(document, moduleDefinition);
   const dragHandle = panel.querySelector(".module-title");
@@ -612,10 +749,12 @@ function bindAudioInputControls() {
       await graphHost.context?.resume?.();
       await nodes.activate();
       arm.textContent = "live";
+      arm.dataset.state = "live";
       setPatchStatus("Microphone input armed · patch MIC IN audio to a processor or output");
     } catch (error) {
       arm.disabled = false;
       arm.textContent = "arm";
+      arm.dataset.state = "";
       setPatchStatus(error instanceof Error ? error.message : "Microphone input could not start");
     }
   });
@@ -767,3 +906,5 @@ function triggerEnvelope(nodes) {
 renderRack();
 bindPatchCables();
 bindModuleReordering();
+bindControlBar();
+loadExamplePatch();

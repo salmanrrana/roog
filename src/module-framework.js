@@ -21,7 +21,7 @@ function assertKnownSignalType(type) {
 
 function assertKnownDirection(direction) {
   if (!Object.values(portDirections).includes(direction)) {
-    throw new TypeError(`Unknown port direction: ${direction}`);
+    throw new TypeError(`Unknown direction: ${direction}`);
   }
 }
 
@@ -115,6 +115,127 @@ export function createJackElement(documentRef, port, moduleId) {
   return wrapper;
 }
 
+const KNOB_SWEEP_DEG = 270;
+const KNOB_START_DEG = -135;
+
+function getKnobRotation(control) {
+  const min = Number(control.min ?? 0);
+  const max = Number(control.max ?? 1);
+  const value = Number(control.value ?? min);
+  const span = max - min || 1;
+  const ratio = Math.min(1, Math.max(0, (value - min) / span));
+
+  return KNOB_START_DEG + ratio * KNOB_SWEEP_DEG;
+}
+
+function applyKnobRotation(pointer, rotation) {
+  pointer.style.transform = `translateX(-50%) rotate(${rotation}deg)`;
+}
+
+function createKnobControl(documentRef, controlDefinition, moduleDefinition) {
+  const label = documentRef.createElement("label");
+  label.className = "control control-range knob";
+
+  const dial = documentRef.createElement("span");
+  dial.className = "knob-dial";
+
+  const ticks = documentRef.createElement("span");
+  ticks.className = "knob-ticks";
+  ticks.setAttribute("aria-hidden", "true");
+
+  const pointer = documentRef.createElement("span");
+  pointer.className = "knob-pointer";
+  pointer.setAttribute("aria-hidden", "true");
+
+  const controlLabel = documentRef.createElement("span");
+  controlLabel.className = "control-label";
+  controlLabel.textContent = controlDefinition.label;
+
+  const input = documentRef.createElement("input");
+  input.type = "range";
+  input.className = "knob-input";
+  input.dataset.controlId = controlDefinition.id;
+  input.setAttribute("aria-label", `${moduleDefinition.name} ${controlDefinition.label}`);
+
+  if (controlDefinition.min !== undefined) {
+    input.min = String(controlDefinition.min);
+  }
+
+  if (controlDefinition.max !== undefined) {
+    input.max = String(controlDefinition.max);
+  }
+
+  if (controlDefinition.step !== undefined) {
+    input.step = String(controlDefinition.step);
+  }
+
+  input.value = String(controlDefinition.value);
+
+  applyKnobRotation(pointer, getKnobRotation(input));
+  input.addEventListener("input", () => {
+    applyKnobRotation(pointer, getKnobRotation(input));
+  });
+
+  dial.append(ticks, pointer);
+  label.append(dial, controlLabel, input);
+  return label;
+}
+
+function createSelectControl(documentRef, controlDefinition, moduleDefinition) {
+  const label = documentRef.createElement("label");
+  label.className = "control control-select";
+
+  const controlLabel = documentRef.createElement("span");
+  controlLabel.className = "control-label";
+  controlLabel.textContent = controlDefinition.label;
+
+  const select = documentRef.createElement("select");
+  select.dataset.controlId = controlDefinition.id;
+  select.setAttribute("aria-label", `${moduleDefinition.name} ${controlDefinition.label}`);
+
+  controlDefinition.options.forEach((option) => {
+    const optionElement = documentRef.createElement("option");
+    optionElement.value = option;
+    optionElement.textContent = option;
+    select.append(optionElement);
+  });
+
+  select.value = String(controlDefinition.value);
+
+  label.append(controlLabel, select);
+  return label;
+}
+
+function createButtonControl(documentRef, controlDefinition, moduleDefinition) {
+  const label = documentRef.createElement("label");
+  label.className = "control control-button";
+
+  const controlLabel = documentRef.createElement("span");
+  controlLabel.className = "control-label";
+  controlLabel.textContent = controlDefinition.label;
+
+  const button = documentRef.createElement("button");
+  button.type = "button";
+  button.dataset.controlId = controlDefinition.id;
+  button.setAttribute("aria-label", `${moduleDefinition.name} ${controlDefinition.label}`);
+  button.textContent = controlDefinition.value ?? controlDefinition.label;
+
+  label.append(controlLabel, button);
+  return label;
+}
+
+function createControl(documentRef, controlDefinition, moduleDefinition) {
+  switch (controlDefinition.type) {
+    case "select":
+      return createSelectControl(documentRef, controlDefinition, moduleDefinition);
+    case "button":
+      return createButtonControl(documentRef, controlDefinition, moduleDefinition);
+    case "range":
+    default:
+      return createKnobControl(documentRef, controlDefinition, moduleDefinition);
+  }
+}
+
 export function createModulePanel(documentRef, moduleDefinition) {
   const panel = documentRef.createElement("article");
   panel.className = `module-panel module-${moduleDefinition.kind}`;
@@ -127,9 +248,11 @@ export function createModulePanel(documentRef, moduleDefinition) {
   title.className = "module-title";
 
   const name = documentRef.createElement("span");
+  name.className = "module-name";
   name.textContent = moduleDefinition.name;
 
   const hp = documentRef.createElement("small");
+  hp.className = "module-hp";
   hp.textContent = formatHp(moduleDefinition.hp);
   title.append(name, hp);
 
@@ -139,54 +262,7 @@ export function createModulePanel(documentRef, moduleDefinition) {
 
   moduleDefinition.controls.forEach((control) => {
     const controlDefinition = typeof control === "string" ? { label: control } : control;
-    const controlElement = documentRef.createElement("label");
-    controlElement.className = "knob";
-
-    const label = documentRef.createElement("span");
-    label.textContent = controlDefinition.label;
-    controlElement.append(label);
-
-    if (controlDefinition.type) {
-      const input = documentRef.createElement(
-        controlDefinition.type === "select" || controlDefinition.type === "button" ? controlDefinition.type : "input"
-      );
-      input.dataset.controlId = controlDefinition.id;
-      input.setAttribute("aria-label", `${moduleDefinition.name} ${controlDefinition.label}`);
-
-      if (controlDefinition.type === "select") {
-        controlDefinition.options.forEach((option) => {
-          const optionElement = documentRef.createElement("option");
-          optionElement.value = option;
-          optionElement.textContent = option;
-          input.append(optionElement);
-        });
-      } else if (controlDefinition.type === "button") {
-        input.type = "button";
-        input.textContent = controlDefinition.value ?? controlDefinition.label;
-      } else {
-        input.type = controlDefinition.type;
-
-        if (controlDefinition.min !== undefined) {
-          input.min = String(controlDefinition.min);
-        }
-
-        if (controlDefinition.max !== undefined) {
-          input.max = String(controlDefinition.max);
-        }
-
-        if (controlDefinition.step !== undefined) {
-          input.step = String(controlDefinition.step);
-        }
-      }
-
-      if (controlDefinition.type !== "button") {
-        input.value = String(controlDefinition.value);
-      }
-
-      controlElement.append(input);
-    }
-
-    controls.append(controlElement);
+    controls.append(createControl(documentRef, controlDefinition, moduleDefinition));
   });
 
   const jacks = documentRef.createElement("div");

@@ -5,42 +5,65 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta
       name="description"
-      content="ROOG is a browser-based eurorack simulation scaffold."
+      content="ROOG is a browser-based eurorack. Patch modules, route signal, make it loud."
     >
-    <title>ROOG Eurorack</title>
+    <title>ROOG — Browser Eurorack</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;800;900&family=JetBrains+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    >
     <link rel="stylesheet" href="./src/styles.css">
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar" aria-label="ROOG status">
-        <div>
-          <p class="eyebrow">ROOG voltage lab</p>
-          <h1>Browser Eurorack</h1>
+        <div class="brand">
+          <p class="brand-tag">Voltage lab</p>
+          <h1 class="logo">ROOG</h1>
+          <p class="brand-sub">Browser eurorack · patch it loud</p>
         </div>
         <div class="status-strip" aria-label="Project status">
-          <span class="status-light" aria-hidden="true"></span>
+          <span class="status-light" data-status-light aria-hidden="true"></span>
           <span data-status-text>Patch bay armed</span>
         </div>
       </header>
 
+      <div class="control-bar" aria-label="Rack controls">
+        <button class="ctrl-btn ctrl-power" data-power type="button" aria-pressed="false">
+          <span class="ctrl-led" aria-hidden="true"></span>
+          <span class="ctrl-label">Power</span>
+        </button>
+        <button class="ctrl-btn" data-load-patch type="button">
+          <span class="ctrl-label">Load patch</span>
+        </button>
+        <button class="ctrl-btn ctrl-warn" data-clear type="button">
+          <span class="ctrl-label">Clear</span>
+        </button>
+        <span class="hp-readout" data-hp-readout aria-label="Rack capacity">0 / 84 HP</span>
+      </div>
+
       <main class="stage">
         <section class="rack" aria-labelledby="rack-title" data-rack>
           <div class="rack-header">
-            <div>
-              <p class="eyebrow">84 HP powered case</p>
-              <h2 id="rack-title">Patchable rack shell</h2>
+            <div class="rack-title-block">
+              <h2 id="rack-title" class="case-label">Powered case</h2>
+              <p class="case-sub">Patchable rack shell</p>
             </div>
-            <div class="hp-readout" data-hp-readout>0 / 84 HP</div>
+            <p class="case-spec">84HP · 3U · ±12V</p>
           </div>
 
           <div class="rack-frame">
+            <span class="screw-cross screw-left" aria-hidden="true"></span>
+            <span class="screw-cross screw-right" aria-hidden="true"></span>
             <div class="rail rail-top" aria-hidden="true"></div>
             <div class="hp-grid" data-hp-grid aria-hidden="true"></div>
             <div
               class="module-row"
               data-rack-row
               role="list"
-              aria-label="Placeholder eurorack module row"
+              aria-label="Eurorack module row"
             ></div>
             <svg
               class="patch-cable-layer"
@@ -55,6 +78,11 @@
           </div>
         </section>
       </main>
+
+      <footer class="footnote" aria-hidden="true">
+        <span class="footnote-mark">⚡</span>
+        <span>High voltage · unpatched cables carry signal · mind the rails</span>
+      </footer>
     </div>
 
     <script type="module" src="./src/app.js"></script>
