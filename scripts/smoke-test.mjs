@@ -15,10 +15,13 @@ async function assertFileExists(filePath) {
   assert.equal(fileStat.isFile(), true, `${filePath} should be a file`);
 }
 
-execFileSync(process.execPath, ["scripts/build.mjs"], {
-  cwd: projectRoot,
-  stdio: "inherit"
-});
+const checkArtifacts = !process.argv.includes("--skip-build");
+if (checkArtifacts) {
+  execFileSync(process.execPath, ["scripts/build.mjs"], {
+    cwd: projectRoot,
+    stdio: "inherit"
+  });
+}
 
 [
   "src/app.js",
@@ -423,11 +426,13 @@ assert.equal(isPathInsideRoot(path.join(projectRoot, "index.html")), true);
 assert.equal(isPathInsideRoot(path.resolve(projectRoot, "..", "package.json")), false);
 assert.equal(isPathInsideRoot(`${projectRoot}-shadow/secret.txt`), false);
 
-await assertFileExists("dist/index.html");
-await assertFileExists("dist/src/app.js");
-await assertFileExists("dist/src/styles.css");
-await assertFileExists("dist/src/module-framework.js");
-await assertFileExists("dist/src/audio-graph-host.js");
+if (checkArtifacts) {
+  await assertFileExists("dist/index.html");
+  await assertFileExists("dist/src/app.js");
+  await assertFileExists("dist/src/styles.css");
+  await assertFileExists("dist/src/module-framework.js");
+  await assertFileExists("dist/src/audio-graph-host.js");
+}
 
 /* ---------- Studio (VCV-inspired) page ---------- */
 
@@ -492,10 +497,16 @@ assert.equal(typeof sequencerDefinition.bind, "function", "Sequencer should bind
 const scopeDefinition = studioModules.find((moduleDefinition) => moduleDefinition.id === "scope");
 assert.equal(scopeDefinition.controls[0].type, "scope", "Scope module should render a scope display");
 
-await assertFileExists("dist/studio.html");
-await assertFileExists("dist/src/studio.js");
-await assertFileExists("dist/src/rack-engine.js");
-await assertFileExists("dist/src/studio-modules.js");
-await assertFileExists("dist/src/studio.css");
+if (checkArtifacts) {
+  await assertFileExists("dist/studio.html");
+  await assertFileExists("dist/src/studio.js");
+  await assertFileExists("dist/src/rack-engine.js");
+  await assertFileExists("dist/src/studio-modules.js");
+  await assertFileExists("dist/src/studio.css");
+}
 
-console.log("Smoke test passed: module framework, audio graph host, both racks, the studio engine, scripts, build, and Netlify config are present.");
+console.log(
+  checkArtifacts
+    ? "Smoke test passed: core behavior and built artifacts are present."
+    : "Fast test passed: module framework, audio graph host, racks, studio engine, scripts, and Netlify config are valid."
+);
