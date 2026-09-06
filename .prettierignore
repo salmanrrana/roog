@@ -1,0 +1,2 @@
+# Existing smoke harness uses the repository's established hand formatting.
+scripts/smoke-test.mjs
