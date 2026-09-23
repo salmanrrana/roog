@@ -28,9 +28,9 @@ if (checkArtifacts) {
   "src/audio-graph-host.js",
   "src/module-framework.js",
   "src/rack-shell.js",
-  "src/rack-engine.js",
-  "src/studio-modules.js",
-  "src/studio.js"
+  "src/studio/engine.js",
+  "src/studio/main.js",
+  "src/studio/dsp/worklets.js"
 ].forEach((sourceFile) => {
   execFileSync(process.execPath, ["--check", sourceFile], {
     cwd: projectRoot,
@@ -434,74 +434,24 @@ if (checkArtifacts) {
   await assertFileExists("dist/src/audio-graph-host.js");
 }
 
-/* ---------- Studio (VCV-inspired) page ---------- */
+/* ---------- Studio page ---------- */
 
 const studioHtml = await readProjectFile("studio.html");
-const studioModulesSource = await readProjectFile("src/studio-modules.js");
-const engineSource = await readProjectFile("src/rack-engine.js");
-const indexHtmlPage = indexHtml;
 
-assert.match(studioHtml, /data-rack-row/);
-assert.match(studioHtml, /data-patch-cable-layer/);
-assert.match(studioHtml, /\.\/src\/studio\.js/);
+assert.match(studioHtml, /data-rack-rows/);
+assert.match(studioHtml, /data-cable-layer/);
+assert.match(studioHtml, /data-visualizer/);
+assert.match(studioHtml, /\.\/src\/studio\/main\.js/);
 assert.match(studioHtml, /href="\.\/index\.html"/, "Studio page should link back to the patch bay");
-assert.match(indexHtmlPage, /href="\.\/studio\.html"/, "Patch bay should link to the studio page");
-assert.match(engineSource, /export function createRackEngine/);
-assert.match(studioModulesSource, /cableSag|studioPresets/);
+assert.match(indexHtml, /href="\.\/studio\.html"/, "Patch bay should link to the studio page");
 
-const { createRackEngine } = await import("../src/rack-engine.js");
-assert.equal(typeof createRackEngine, "function", "rack-engine should export createRackEngine");
-
-const { studioModules, studioPresets, studioRackConfig } = await import("../src/studio-modules.js");
-
-assert.equal(
-  studioModules.reduce((usedHp, moduleDefinition) => usedHp + moduleDefinition.hp, 0),
-  studioRackConfig.totalHp,
-  "Studio modules should fill the studio rack capacity"
-);
-
-const studioRegistry = createModuleRegistry();
-const registeredStudioModules = studioModules.map((moduleDefinition) => studioRegistry.register(moduleDefinition));
-assert.equal(registeredStudioModules.length, studioModules.length, "All studio modules should register");
-
-// Every preset connection must reference a real, patchable source/target port.
-const studioById = new Map(registeredStudioModules.map((moduleDefinition) => [moduleDefinition.id, moduleDefinition]));
-
-function findStudioPort(moduleId, label, direction) {
-  return studioById
-    .get(moduleId)
-    ?.ports.find((port) => port.label.toLowerCase() === label.toLowerCase() && port.direction === direction);
-}
-
-studioPresets.forEach((preset) => {
-  assert.ok(preset.connections.length > 0, `${preset.id} preset should define cables`);
-
-  preset.connections.forEach(([srcModule, srcLabel, srcDir, tgtModule, tgtLabel, tgtDir]) => {
-    const sourcePort = findStudioPort(srcModule, srcLabel, srcDir);
-    const targetPort = findStudioPort(tgtModule, tgtLabel, tgtDir);
-
-    assert.ok(sourcePort, `${preset.id}: missing source port ${srcModule}/${srcLabel}/${srcDir}`);
-    assert.ok(targetPort, `${preset.id}: missing target port ${tgtModule}/${tgtLabel}/${tgtDir}`);
-    assert.equal(
-      canPatchPorts(sourcePort, targetPort),
-      true,
-      `${preset.id}: ${srcModule}.${srcLabel} -> ${tgtModule}.${tgtLabel} should be patchable`
-    );
-  });
-});
-
-const sequencerDefinition = studioModules.find((moduleDefinition) => moduleDefinition.id === "seq");
-assert.ok(sequencerDefinition, "Studio should include the SEQ-8 sequencer");
-assert.equal(typeof sequencerDefinition.bind, "function", "Sequencer should bind its RUN button");
-
-const scopeDefinition = studioModules.find((moduleDefinition) => moduleDefinition.id === "scope");
-assert.equal(scopeDefinition.controls[0].type, "scope", "Scope module should render a scope display");
+// Focused studio logic tests (music, clock, patching, catalog, presets).
+await import("./studio-test.mjs");
 
 if (checkArtifacts) {
   await assertFileExists("dist/studio.html");
-  await assertFileExists("dist/src/studio.js");
-  await assertFileExists("dist/src/rack-engine.js");
-  await assertFileExists("dist/src/studio-modules.js");
+  await assertFileExists("dist/src/studio/main.js");
+  await assertFileExists("dist/src/studio/dsp/worklets.js");
   await assertFileExists("dist/src/studio.css");
 }
 
