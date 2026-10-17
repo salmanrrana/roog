@@ -3,8 +3,9 @@
  * last edit, and never more than ~1 s after the first unsaved one, so a killed
  * tab loses at most about a second. The write runs in idle time so painting
  * steps or dragging notes never stutters, and hiding or closing the tab writes
- * right away.
+ * right away. `useSaveStatus` tells the UI whether the latest edit is on disk.
  */
+import { create } from "zustand";
 import type { Project } from "@/core/schema";
 import { useProjectStore } from "@/state/project-store";
 import { toast } from "@/ui/toast";
@@ -13,6 +14,14 @@ import { type ProjectMeta, db } from "./db";
 const DEBOUNCE_MS = 600;
 const MAX_WAIT_MS = 850;
 const IDLE_TIMEOUT_MS = 150;
+
+export type SaveStatus =
+  | { readonly state: "saved" }
+  | { readonly state: "saving" }
+  | { readonly state: "error"; readonly message: string };
+
+/** Save state for the header: "saving" from an edit until it's written, "error" if a write failed. */
+export const useSaveStatus = create<SaveStatus>()(() => ({ state: "saved" }));
 
 /** The project object last written (or loaded). Equal reference = nothing to save. */
 let saved: Project | null = null;
@@ -54,17 +63,31 @@ export async function flushSave(): Promise<void> {
   dirtySince = null;
 
   const { project } = useProjectStore.getState();
-  if (project === saved) return writing;
+  if (project === saved) {
+    // Already on disk, e.g. undo then redo back to the saved version.
+    await writing;
+    settle();
+    return;
+  }
   saved = project;
+  useSaveStatus.setState({ state: "saving" }, true);
   writing = writeProject(project);
   try {
     await writing;
     failing = false;
+    settle();
   } catch (error) {
     // Unsaved again: the next edit or flush retries.
     if (saved === project) saved = null;
+    useSaveStatus.setState({ state: "error", message: errorMessage(error) }, true);
     throw error;
   }
+}
+
+/** Show "saved" if the store still holds what's on disk and no newer edit is waiting. */
+function settle(): void {
+  if (useProjectStore.getState().project === saved && timer === undefined)
+    useSaveStatus.setState({ state: "saved" }, true);
 }
 
 /** Start watching the project store. Call once, after the boot project is loaded. */
@@ -79,6 +102,7 @@ export function startAutosave(): void {
 }
 
 function schedule(): void {
+  useSaveStatus.setState({ state: "saving" }, true);
   const now = performance.now();
   dirtySince ??= now;
   clearTimeout(timer);

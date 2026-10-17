@@ -9,10 +9,12 @@ const TOKENS = [
   "line",
   "ink",
   "ink-dim",
+  "ink-mute",
   "hot",
   "amber",
   "acid",
   "rec",
+  "focus",
 ] as const;
 
 export type ThemeColor = (typeof TOKENS)[number];
@@ -28,3 +30,10 @@ export function themeColors(): Readonly<Record<ThemeColor, string>> {
   }
   return cache;
 }
+
+/** Canvas fonts, matching the DOM's 11px mono. `tiny` is only for labels inside note or clip shapes. */
+export const CANVAS_FONT = {
+  label: '600 11px "JetBrains Mono", ui-monospace, monospace',
+  bold: '700 11px "JetBrains Mono", ui-monospace, monospace',
+  tiny: '600 10px "JetBrains Mono", ui-monospace, monospace',
+} as const;

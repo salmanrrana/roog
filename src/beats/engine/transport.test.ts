@@ -40,6 +40,7 @@ function project(bpm = 120): Project {
         volume: 1,
         pan: 0,
         muted: false,
+        solo: false,
         mixerTrackId: "master",
       },
     ],
@@ -52,7 +53,15 @@ function project(bpm = 120): Project {
     ],
     playlist: { tracks: [], clips: [] },
     mixer: {
-      master: { id: "master", name: "Master", volume: 1, pan: 0, muted: false, effects: [] },
+      master: {
+        id: "master",
+        name: "Master",
+        volume: 1,
+        pan: 0,
+        muted: false,
+        solo: false,
+        effects: [],
+      },
       inserts: [],
     },
   };

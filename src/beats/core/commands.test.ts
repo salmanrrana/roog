@@ -10,13 +10,58 @@ import {
   setChannelParam,
   setStep,
   toggleChannelSolo,
+  uniqueName,
+  updateChannel,
 } from "./commands";
 import { createProject } from "./defaults";
 import type { Project } from "./schema";
 
 const fresh = (): Project => structuredClone(createProject());
 
+test("uniqueName adds or bumps a trailing number", () => {
+  expect(uniqueName("Snare", ["Kick"])).toBe("Snare");
+  expect(uniqueName("Snare", ["Snare"])).toBe("Snare 2");
+  expect(uniqueName("Snare", ["Snare", "Snare 2"])).toBe("Snare 3");
+  expect(uniqueName("Snare 2", ["Snare", "Snare 2"])).toBe("Snare 3");
+});
+
 describe("channels", () => {
+  test("a second Snare is 'Snare 2' in an unused color, on an insert of that name", () => {
+    const project = fresh();
+    const snare = project.channels.find((channel) => channel.name === "Snare");
+    const id = addChannel(project, { name: "Snare", sampleId: "factory:snare" });
+    const channel = project.channels.find((item) => item.id === id);
+    expect(channel?.name).toBe("Snare 2");
+    expect(project.channels.filter((item) => item.color === channel?.color)).toHaveLength(1);
+    expect(channel?.color).not.toBe(snare?.color);
+    const insert = project.mixer.inserts.find((track) => track.id === channel?.mixerTrackId);
+    expect(insert?.name).toBe("Snare 2");
+  });
+
+  test("renaming a channel renames its own insert, not a shared or custom-named one", () => {
+    const project = fresh();
+    const [kick, clap, hat] = project.channels;
+    if (!kick || !clap || !hat) throw new Error("starter kit changed");
+    const insertName = (channelId: string) =>
+      project.mixer.inserts.find(
+        (track) => track.id === project.channels.find((c) => c.id === channelId)?.mixerTrackId,
+      )?.name;
+
+    updateChannel(project, kick.id, { name: "Big Kick" });
+    expect(insertName(kick.id)).toBe("Big Kick");
+
+    // Clap now shares Hat's insert: renaming Hat leaves it alone.
+    updateChannel(project, clap.id, { mixerTrackId: hat.mixerTrackId });
+    updateChannel(project, hat.id, { name: "Shaker" });
+    expect(insertName(hat.id)).toBe("Hat");
+
+    // A custom-named insert keeps its name.
+    const custom = project.mixer.inserts.find((track) => track.id === kick.mixerTrackId);
+    if (custom) custom.name = "Drums bus";
+    updateChannel(project, kick.id, { name: "Kick" });
+    expect(insertName(kick.id)).toBe("Drums bus");
+  });
+
   test("a new channel gets its own mixer insert", () => {
     const project = fresh();
     const id = addChannel(project, { name: "Tom", sampleId: "factory:tom" });
@@ -42,15 +87,17 @@ describe("channels", () => {
     expect(project.channels[0]?.params).not.toHaveProperty("nonsense");
   });
 
-  test("solo mutes the others, and soloing again unmutes everyone", () => {
+  test("solo marks one channel, leaves mutes alone, and soloing again clears it", () => {
     const project = fresh();
-    const id = project.channels[1]?.id ?? "";
-    toggleChannelSolo(project, id);
-    expect(project.channels.map((channel) => channel.muted)).toEqual(
-      project.channels.map((channel) => channel.id !== id),
-    );
-    toggleChannelSolo(project, id);
-    expect(project.channels.every((channel) => !channel.muted)).toBe(true);
+    const [first, second] = project.channels;
+    if (!first || !second) throw new Error("fresh project needs two channels");
+    first.muted = true;
+    toggleChannelSolo(project, second.id);
+    expect(project.channels.filter((channel) => channel.solo)).toEqual([second]);
+    expect(first.muted).toBe(true);
+    toggleChannelSolo(project, second.id);
+    expect(project.channels.some((channel) => channel.solo)).toBe(false);
+    expect(first.muted).toBe(true);
   });
 });
 
@@ -80,10 +127,17 @@ describe("playlist", () => {
 });
 
 describe("patterns", () => {
-  test("new patterns are numbered after the highest existing one", () => {
+  test("new and cloned patterns get the next free name and an unused color", () => {
     const project = fresh();
     addPattern(project);
-    expect(project.patterns.map((pattern) => pattern.name)).toEqual(["Pattern 1", "Pattern 2"]);
+    const first = project.patterns[0]?.id ?? "";
+    clonePattern(project, first);
+    expect(project.patterns.map((pattern) => pattern.name)).toEqual([
+      "Pattern 1",
+      "Pattern 3",
+      "Pattern 2",
+    ]);
+    expect(new Set(project.patterns.map((pattern) => pattern.color)).size).toBe(3);
   });
 
   test("clones get fresh note ids", () => {

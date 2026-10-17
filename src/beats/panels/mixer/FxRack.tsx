@@ -8,14 +8,31 @@ import {
 } from "@/core/commands";
 import type { EffectSlot, MixerTrack } from "@/core/schema";
 import { effects, getEffect } from "@/effects";
-import { edit } from "@/state/project-store";
-import { Knob } from "@/ui/Knob";
+import { edit, useProjectStore } from "@/state/project-store";
+import { Button } from "@/ui/Button";
+import { ParamControl } from "@/ui/ParamControl";
 import { type MenuEntry, openMenu } from "@/ui/menu";
 import { selectSlot, useMixerView } from "./store";
 
-/** The selected track's insert chain: slot list on top, the selected slot's knobs below. */
+/** One-line hints in the Add effect menu, keyed by the registry's display name. */
+const HINTS: Record<string, string> = {
+  Filter: "Cut lows or highs",
+  EQ: "Shape bass, mids and highs",
+  Delay: "Echoes",
+  Reverb: "Room and space",
+  Drive: "Grit and saturation",
+  Compressor: "Even out the level",
+};
+
+/**
+ * The selected track's effects: a header naming the track (top edge in its first
+ * routed channel's color), the slot list, then the selected slot's controls.
+ */
 export function FxRack({ track }: { readonly track: MixerTrack }) {
   const slotId = useMixerView((s) => s.slotId);
+  const edgeColor = useProjectStore(
+    (s) => s.project.channels.find((channel) => channel.mixerTrackId === track.id)?.color,
+  );
   const selected = track.effects.find((slot) => slot.id === slotId) ?? track.effects[0];
 
   function openAddMenu(event: MouseEvent<HTMLButtonElement>) {
@@ -24,6 +41,7 @@ export function FxRack({ track }: { readonly track: MixerTrack }) {
       { x: rect.left, y: rect.bottom },
       Object.entries(effects).map(([kind, def]) => ({
         label: def.name,
+        ...(HINTS[def.name] === undefined ? {} : { hint: HINTS[def.name] }),
         onSelect: () => {
           const id = edit((p) => addEffect(p, track.id, kind));
           if (id) selectSlot(id);
@@ -34,12 +52,13 @@ export function FxRack({ track }: { readonly track: MixerTrack }) {
 
   return (
     <aside
-      aria-label="Insert effects"
-      className="flex w-72 shrink-0 flex-col border-l border-line bg-panel"
+      aria-label="Effects"
+      className="flex w-72 shrink-0 flex-col overflow-y-auto border-t-[3px] border-l border-line bg-panel"
+      style={{ borderTopColor: edgeColor ?? "var(--color-line)" }}
     >
-      <header className="flex items-baseline justify-between gap-2 border-b border-line px-3 py-2">
-        <h2 className="font-display text-base tracking-wide text-ink uppercase">Insert FX</h2>
-        <span className="truncate font-mono text-[11px] text-amber uppercase">{track.name}</span>
+      <header className="flex items-baseline gap-2 border-b border-line px-3 py-2">
+        <h2 className="panel-title">Effects</h2>
+        <span className="truncate text-sm text-ink">{track.name}</span>
       </header>
 
       <ol className="flex flex-col gap-px border-b border-line bg-line">
@@ -54,20 +73,22 @@ export function FxRack({ track }: { readonly track: MixerTrack }) {
           />
         ))}
         <li className="bg-panel">
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="Add effect"
             onClick={openAddMenu}
-            className="w-full px-3 py-1.5 text-left font-mono text-[11px] font-bold tracking-wider text-ink-dim uppercase hover:bg-panel-2 hover:text-ink"
+            className="w-full justify-start rounded-none px-3"
           >
             + Add effect
-          </button>
+          </Button>
         </li>
       </ol>
 
       {selected ? (
         <SlotParams slot={selected} trackId={track.id} />
       ) : (
-        <p className="p-3 font-mono text-[11px] text-ink-dim">
+        <p className="p-3 font-mono text-2xs text-ink-dim">
           No effects on this track. Add one to shape its sound.
         </p>
       )}
@@ -101,19 +122,18 @@ function SlotRow({ slot, index, last, trackId, selected }: SlotRowProps) {
     openMenu({ x: event.clientX, y: event.clientY }, entries);
   }
 
-  const tool =
-    "grid size-6 place-items-center font-mono text-[11px] text-ink-dim hover:text-ink disabled:opacity-30";
+  const tool = "size-6 px-0";
   return (
     <li
       onContextMenu={onContextMenu}
-      className={`flex items-center gap-1.5 pr-1 pl-2 ${selected ? "bg-panel-2 shadow-[inset_2px_0_0_var(--color-amber)]" : "bg-panel"}`}
+      className={`flex items-center gap-1.5 pr-1 pl-2 ${selected ? "bg-panel-2 shadow-[inset_2px_0_0_var(--color-ink)]" : "bg-panel"}`}
     >
-      <span className="w-3 font-mono text-[10px] text-ink-dim">{index + 1}</span>
+      <span className="w-3 font-mono text-2xs text-ink-mute">{index + 1}</span>
       <button
         type="button"
         aria-pressed={slot.enabled}
-        aria-label={`${name} ${slot.enabled ? "on" : "bypassed"}`}
-        title={slot.enabled ? "Bypass" : "Enable"}
+        aria-label={`${slot.enabled ? "Bypass" : "Enable"} ${name}`}
+        title={`${slot.enabled ? "Bypass" : "Enable"} ${name} · lit = on`}
         onClick={toggle}
         className="grid size-5 place-items-center"
       >
@@ -124,36 +144,39 @@ function SlotRow({ slot, index, last, trackId, selected }: SlotRowProps) {
       <button
         type="button"
         onClick={() => selectSlot(slot.id)}
-        className={`min-w-0 flex-1 truncate py-1.5 text-left text-sm font-bold ${slot.enabled ? "text-ink" : "text-ink-dim line-through"}`}
+        className={`min-w-0 flex-1 truncate py-1.5 text-left text-sm font-bold ${slot.enabled ? "text-ink" : "text-ink-mute line-through"}`}
       >
         {name}
       </button>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         aria-label="Move up"
         disabled={index === 0}
         onClick={() => move(-1)}
         className={tool}
       >
         ▲
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
         aria-label="Move down"
         disabled={last}
         onClick={() => move(1)}
         className={tool}
       >
         ▼
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
         aria-label={`Remove ${name}`}
         onClick={remove}
-        className={`${tool} hover:text-rec`}
+        className={`${tool} enabled:hover:text-rec`}
       >
         ✕
-      </button>
+      </Button>
     </li>
   );
 }
@@ -162,26 +185,28 @@ function SlotParams({ slot, trackId }: { readonly slot: EffectSlot; readonly tra
   const def = getEffect(slot.kind);
   if (!def) {
     return (
-      <p className="p-3 font-mono text-[11px] text-ink-dim">
+      <p className="p-3 font-mono text-2xs text-ink-dim">
         This build doesn't know the "{slot.kind}" effect. It passes audio through untouched.
       </p>
     );
   }
   return (
     <section aria-label={`${def.name} settings`} className="p-3">
-      <h3 className="mb-2 font-mono text-[11px] font-bold tracking-wider text-ink-dim uppercase">
-        {def.name}
-      </h3>
-      <div className={`grid grid-cols-4 gap-x-2 gap-y-3 ${slot.enabled ? "" : "opacity-50"}`}>
+      <h3 className="caption mb-2">{def.name}</h3>
+      <div
+        className={`grid grid-cols-3 items-start justify-items-center gap-x-2 gap-y-3 ${slot.enabled ? "" : "opacity-50"}`}
+      >
         {Object.entries(def.params).map(([key, spec]) => (
-          <Knob
-            key={key}
-            spec={spec}
-            value={slot.params[key] ?? spec.default}
-            onChange={(value, gesture) =>
-              edit((p) => setEffectParam(p, trackId, slot.id, key, value), gesture)
-            }
-          />
+          // Choice params (segmented buttons) take a full row; knobs take one cell.
+          <div key={key} className={spec.options ? "col-span-3 justify-self-start" : ""}>
+            <ParamControl
+              spec={spec}
+              value={slot.params[key] ?? spec.default}
+              onChange={(value, gesture) =>
+                edit((p) => setEffectParam(p, trackId, slot.id, key, value), gesture)
+              }
+            />
+          </div>
         ))}
       </div>
     </section>

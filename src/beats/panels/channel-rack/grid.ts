@@ -8,8 +8,13 @@ import { STEP_TICKS } from "@/core/timing";
 
 /** Height of one channel row (DOM controls and canvas lane). */
 export const ROW_H = 26;
-/** Width of one step cell on the canvas. */
-export const CELL_W = 22;
+/** Height of the rack's sticky title header. */
+export const HEADER_H = 36;
+/** Height of the sticky beat ruler above the step rows (and the column captions beside it). */
+export const RULER_H = 18;
+/** Step cells scale with the panel width between these. */
+export const MIN_CELL_W = 18;
+export const MAX_CELL_W = 56;
 /** Step counts offered in the rack header. */
 export const STEP_OPTIONS = [16, 32, 64] as const;
 
@@ -20,6 +25,11 @@ export interface Cell {
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+/** Cell width that fills `available` px with `steps` cells, clamped to MIN/MAX_CELL_W. */
+export function fitCellWidth(available: number, steps: number): number {
+  return clamp(Math.floor(available / Math.max(1, steps)), MIN_CELL_W, MAX_CELL_W);
+}
+
 /** Row under a y offset (px from the top of the rows), or -1 outside the rows. */
 export function rowAt(y: number, rows: number): number {
   const row = Math.floor(y / ROW_H);
@@ -27,18 +37,19 @@ export function rowAt(y: number, rows: number): number {
 }
 
 /**
- * Cell under a canvas point. Returns null outside the grid, unless `clampToGrid`
- * is set (drags that leave the canvas keep painting the nearest cell).
+ * Cell under a point on the rows canvas (row 0 starts at y = 0). Returns
+ * null outside the grid, unless `clampToGrid` is set (drags that leave the canvas
+ * keep painting the nearest cell).
  */
 export function cellAt(
   x: number,
   y: number,
-  grid: { readonly rows: number; readonly steps: number },
+  grid: { readonly rows: number; readonly steps: number; readonly cellWidth: number },
   clampToGrid = false,
 ): Cell | null {
   if (grid.rows <= 0 || grid.steps <= 0) return null;
   const row = Math.floor(y / ROW_H);
-  const step = Math.floor(x / CELL_W);
+  const step = Math.floor(x / grid.cellWidth);
   if (clampToGrid)
     return { row: clamp(row, 0, grid.rows - 1), step: clamp(step, 0, grid.steps - 1) };
   return row >= 0 && row < grid.rows && step >= 0 && step < grid.steps ? { row, step } : null;

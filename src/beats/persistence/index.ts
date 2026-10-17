@@ -5,7 +5,14 @@
 import { parseProject } from "@/core/migrate";
 import { loadProject, useProjectStore } from "@/state/project-store";
 import { toast } from "@/ui/toast";
-import { errorMessage, flushSave, markSaved, startAutosave, writeProject } from "./autosave";
+import {
+  errorMessage,
+  flushSave,
+  markSaved,
+  startAutosave,
+  useSaveStatus,
+  writeProject,
+} from "./autosave";
 import { db, requestPersistentStorage } from "./db";
 import { LAST_PROJECT_KEY } from "./projects";
 import { loadSampleLibrary } from "./samples";
@@ -30,7 +37,7 @@ export {
   useSampleLibrary,
 } from "./samples";
 export { FILE_EXTENSION } from "./file-format";
-export { errorMessage } from "./autosave";
+export { errorMessage, type SaveStatus, useSaveStatus } from "./autosave";
 
 /**
  * Open the last project (or save the starter project on a first visit) and start
@@ -66,6 +73,10 @@ export async function bootPersistence(): Promise<void> {
     }
     startAutosave();
   } catch (error) {
+    useSaveStatus.setState(
+      { state: "error", message: "Saving is off: this browser blocked local storage" },
+      true,
+    );
     toast(`Saving is off: this browser blocked local storage (${errorMessage(error)})`, "error");
   }
 }

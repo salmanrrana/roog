@@ -1,12 +1,12 @@
 import { removeClips } from "@/core/commands";
 import { edit, useProjectStore } from "@/state/project-store";
-import { setPlayMode, useUiStore } from "@/state/ui-store";
+import { useUiStore } from "@/state/ui-store";
 import { useHotkeys } from "@/ui/hotkeys";
-import { LedButton } from "@/ui/LedButton";
+import { Segmented } from "@/ui/Segmented";
 import { clipsSpan, pasteClips } from "./clips";
 import { PatternList } from "./PatternList";
 import { Timeline } from "./Timeline";
-import { TOOLS, clipboard, setSelection, setTool, usePlaylistView } from "./view-store";
+import { TOOLS, type Tool, clipboard, setSelection, setTool, usePlaylistView } from "./view-store";
 
 function selectedClips() {
   const { selected } = usePlaylistView.getState();
@@ -41,10 +41,44 @@ function deleteSelection() {
   setSelection(new Set());
 }
 
-/** Playlist view: pattern list on the left, tool bar and the song timeline on the right. */
+/** One-line help for the active tool; `pattern` is the brush's name. */
+function toolHint(tool: Tool, pattern: string): string {
+  switch (tool) {
+    case "draw":
+      return `Click to place ${pattern} · drag to position · Alt = no snap · right-click deletes`;
+    case "paint":
+      return `Drag across a track to fill it with ${pattern}`;
+    case "delete":
+      return "Click or drag over clips to delete";
+    case "select":
+      return "Drag a box · Shift-click adds · Ctrl+C / Ctrl+V / Ctrl+D copy, paste, duplicate";
+  }
+}
+
+const TOOL_OPTIONS = TOOLS.map((item) => ({
+  value: item.id,
+  title: item.title,
+  label: (
+    <>
+      {item.label}
+      <kbd className="ml-1.5 font-mono text-2xs font-normal opacity-60">
+        {item.key.toUpperCase()}
+      </kbd>
+    </>
+  ),
+}));
+
+/**
+ * Playlist view: pattern list on the left, tool bar and the song timeline on the right.
+ * The header owns play mode; the toolbar only reads it back.
+ */
 export function Playlist() {
   const tool = usePlaylistView((s) => s.tool);
   const songMode = useUiStore((s) => s.playMode === "song");
+  const patternId = useUiStore((s) => s.patternId);
+  const patternName = useProjectStore(
+    (s) => s.project.patterns.find((p) => p.id === patternId)?.name ?? "the pattern",
+  );
 
   useHotkeys({
     p: () => setTool("draw"),
@@ -68,34 +102,29 @@ export function Playlist() {
         <div
           role="toolbar"
           aria-label="Playlist tools"
-          className="flex items-center gap-1 border-b border-line bg-panel px-2 py-1"
+          className="flex items-center gap-2 border-b border-line bg-panel px-2 py-1"
         >
-          {TOOLS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={tool === item.id}
-              onClick={() => setTool(item.id)}
-              className="rounded-sm border border-line bg-panel-2 px-2 py-0.5 text-xs font-bold tracking-wider text-ink-dim uppercase hover:text-ink aria-pressed:border-amber aria-pressed:text-amber"
-            >
-              {item.label}
-              <kbd className="ml-1 font-mono text-[10px] font-normal opacity-70">
-                {item.key.toUpperCase()}
-              </kbd>
-            </button>
-          ))}
-          <span className="ml-3 hidden font-mono text-[10px] text-ink-dim uppercase md:inline">
-            Alt: no snap · Right-click: delete · Ctrl+drag: select
+          <span className="caption">Tool</span>
+          <Segmented
+            label="Tool"
+            size="sm"
+            options={TOOL_OPTIONS}
+            value={tool}
+            onChange={setTool}
+          />
+          <span className="ml-2 hidden min-w-0 text-2xs leading-tight text-ink-dim lg:inline">
+            {toolHint(tool, patternName)}
           </span>
-          <LedButton
-            active={songMode}
-            tone="hot"
-            className="ml-auto"
-            title="Play the song instead of the selected pattern (L)"
-            onClick={() => setPlayMode(songMode ? "pattern" : "song")}
-          >
-            Song
-          </LedButton>
+          <span className="ml-auto flex shrink-0 items-center max-xl:hidden gap-1.5 text-2xs whitespace-nowrap text-ink-dim">
+            {songMode ? (
+              <>
+                <span aria-hidden="true" className="size-1.5 rounded-full bg-hot" />
+                Song mode
+              </>
+            ) : (
+              "Pattern mode · L switches"
+            )}
+          </span>
         </div>
         <Timeline />
       </div>

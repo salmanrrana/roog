@@ -69,6 +69,8 @@ interface TrackNode {
   chainKey: string | null;
   /** Connections made for the current effect chain, undone on rewire. */
   links: [AudioNode, AudioNode][];
+  /** Current target of `volume` (0 when muted or silenced by another insert's solo). */
+  level: number;
 }
 
 interface ChannelNode {
@@ -79,6 +81,8 @@ interface ChannelNode {
   readonly gain: GainNode;
   readonly pan: StereoPannerNode;
   target: AudioNode | null;
+  /** Current target of `gain` (0 when muted or silenced by another channel's solo). */
+  level: number;
 }
 
 /** Build an empty graph on `ctx`; call `sync` to fill it from a project. */
@@ -107,13 +111,17 @@ export function createMixerGraph(
 
   // ------------------------------------------------------------ tracks
 
-  function createTrack(data: MixerTrack, output: AudioNode): TrackNode {
+  /** Gain for a track or channel: silent when muted, or when something else is soloed. */
+  const levelOf = (data: Channel | MixerTrack, anySolo: boolean) =>
+    data.muted || (anySolo && !data.solo) ? 0 : data.volume;
+
+  function createTrack(data: MixerTrack, output: AudioNode, level: number): TrackNode {
     const input = ctx.createGain();
     const volume = ctx.createGain();
     const pan = ctx.createStereoPanner();
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
-    volume.gain.value = data.muted ? 0 : data.volume;
+    volume.gain.value = level;
     pan.pan.value = data.pan;
     volume.connect(pan).connect(analyser).connect(output);
     const node: TrackNode = {
@@ -126,18 +134,17 @@ export function createMixerGraph(
       slots: new Map(),
       chainKey: null,
       links: [],
+      level,
     };
     syncEffects(node, data.effects);
     return node;
   }
 
-  function syncTrack(node: TrackNode, data: MixerTrack): void {
+  function syncTrack(node: TrackNode, data: MixerTrack, level: number): void {
+    if (node.level !== level) ramp(node.volume.gain, (node.level = level));
     const prev = node.data;
     if (prev === data) return;
     node.data = data;
-    if (prev.volume !== data.volume || prev.muted !== data.muted) {
-      ramp(node.volume.gain, data.muted ? 0 : data.volume);
-    }
     if (prev.pan !== data.pan) ramp(node.pan.pan, data.pan);
     if (prev.effects !== data.effects) syncEffects(node, data.effects);
   }
@@ -199,10 +206,10 @@ export function createMixerGraph(
 
   // ------------------------------------------------------------ channels
 
-  function createChannel(data: Channel): ChannelNode {
+  function createChannel(data: Channel, level: number): ChannelNode {
     const gain = ctx.createGain();
     const pan = ctx.createStereoPanner();
-    gain.gain.value = data.muted ? 0 : data.volume;
+    gain.gain.value = level;
     pan.pan.value = data.pan;
     gain.connect(pan);
     const def = getInstrument(data.instrument);
@@ -214,10 +221,12 @@ export function createMixerGraph(
       gain,
       pan,
       target: null,
+      level,
     };
   }
 
-  function syncChannel(node: ChannelNode, data: Channel): void {
+  function syncChannel(node: ChannelNode, data: Channel, level: number): void {
+    if (node.level !== level) ramp(node.gain.gain, (node.level = level));
     const prev = node.data;
     if (prev === data) return;
     node.data = data;
@@ -231,9 +240,6 @@ export function createMixerGraph(
     } else if (prev.params !== data.params) {
       node.params = normalizeParams(def.params, data.params);
     }
-    if (prev.volume !== data.volume || prev.muted !== data.muted) {
-      ramp(node.gain.gain, data.muted ? 0 : data.volume);
-    }
     if (prev.pan !== data.pan) ramp(node.pan.pan, data.pan);
   }
 
@@ -246,8 +252,9 @@ export function createMixerGraph(
   // ------------------------------------------------------------ sync
 
   const master = createTrack(
-    { id: "master", name: "Master", volume: 1, pan: 0, muted: false, effects: [] },
+    { id: "master", name: "Master", volume: 1, pan: 0, muted: false, solo: false, effects: [] },
     limiter,
+    1,
   );
 
   function sync(project: Project): void {
@@ -255,13 +262,15 @@ export function createMixerGraph(
     lastProject = project;
     const { mixer } = project;
 
-    syncTrack(master, mixer.master);
+    syncTrack(master, mixer.master, levelOf(mixer.master, false));
+    const insertSolo = mixer.inserts.some((track) => track.solo);
     const insertIds = new Set<string>();
     for (const insert of mixer.inserts) {
       insertIds.add(insert.id);
       const node = tracks.get(insert.id);
-      if (node) syncTrack(node, insert);
-      else tracks.set(insert.id, createTrack(insert, master.input));
+      const level = levelOf(insert, insertSolo);
+      if (node) syncTrack(node, insert, level);
+      else tracks.set(insert.id, createTrack(insert, master.input, level));
     }
     for (const [id, node] of tracks) {
       if (insertIds.has(id)) continue;
@@ -269,12 +278,14 @@ export function createMixerGraph(
       tracks.delete(id);
     }
 
+    const channelSolo = project.channels.some((channel) => channel.solo);
     const channelIds = new Set<string>();
     for (const channel of project.channels) {
       channelIds.add(channel.id);
       let node = channels.get(channel.id);
-      if (node) syncChannel(node, channel);
-      else channels.set(channel.id, (node = createChannel(channel)));
+      const level = levelOf(channel, channelSolo);
+      if (node) syncChannel(node, channel, level);
+      else channels.set(channel.id, (node = createChannel(channel, level)));
       // Unknown or deleted tracks fall back to master.
       const target = (tracks.get(channel.mixerTrackId) ?? master).input;
       if (node.target !== target) {

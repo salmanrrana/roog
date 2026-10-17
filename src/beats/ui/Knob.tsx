@@ -1,4 +1,5 @@
 import {
+  type FocusEvent,
   type KeyboardEvent,
   type PointerEvent,
   useEffect,
@@ -17,17 +18,22 @@ interface KnobProps {
    * so passing it to `edit(recipe, gesture)` makes the whole drag one undo step.
    */
   readonly onChange: (value: number, gesture: string) => void;
+  /** Visible caption; defaults to spec.label. */
   readonly label?: string;
+  /** Accessible name; defaults to `label` (e.g. "Kick pan" while the caption says "Pan"). */
+  readonly name?: string;
   readonly format?: (value: number) => string;
   /** Diameter in px. */
   readonly size?: number;
-  /** Arc color (any CSS color). */
+  /** Arc color (any CSS color). Ink by default; the channel color inside its settings. */
   readonly color?: string;
   /**
-   * No label row, for dense layouts like rack rows. The label stays as the
-   * accessible name and tooltip; the value floats above the knob while dragging.
+   * stack: caption above, value below (settings, effects, mixer pan).
+   * inline: dial with caption and value to its right (header).
+   * bare: dial only, for dense rows with column headers; a "<label> <value>" bubble
+   * shows to the right on hover, keyboard focus and drag.
    */
-  readonly compact?: boolean;
+  readonly layout?: "stack" | "inline" | "bare";
 }
 
 const SWEEP = 270;
@@ -56,15 +62,18 @@ export function Knob({
   value,
   onChange,
   label = spec.label,
+  name = label,
   format = (v) => formatParam(spec, v),
   size = 36,
-  color = "var(--color-hot)",
-  compact = false,
+  color = "var(--color-ink)",
+  layout = "stack",
 }: KnobProps) {
   const element = useRef<HTMLDivElement>(null);
   const drag = useRef<{ lastY: number; norm: number; gesture: string } | null>(null);
   const wheel = useRef({ gesture: "", at: 0 });
   const [active, setActive] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [keyFocused, setKeyFocused] = useState(false);
   const norm = paramToNorm(spec, value);
   const zero = spec.min < 0 && spec.max > 0 ? paramToNorm(spec, 0) : 0;
   const keyStep = spec.options ? 1 / Math.max(1, spec.options.length - 1) : 0.05;
@@ -129,70 +138,96 @@ export function Knob({
     return () => node.removeEventListener("wheel", listener);
   }, []);
 
+  function onFocus(event: FocusEvent<HTMLDivElement>) {
+    setKeyFocused(event.currentTarget.matches(":focus-visible"));
+  }
+
   const angle = START + SWEEP * norm;
+  const text = format(value);
   const tip = polar(angle, 10);
-  return (
+  const title = `${label}: ${text} · double-click to reset`;
+  const dial = (
     <div
-      className="relative flex w-min flex-col items-center gap-0.5"
-      title={`${label}: ${format(value)}`}
+      ref={element}
+      role="slider"
+      tabIndex={0}
+      aria-label={name}
+      aria-valuemin={spec.min}
+      aria-valuemax={spec.max}
+      aria-valuenow={value}
+      aria-valuetext={text}
+      className="cursor-ns-resize touch-none rounded-full select-none"
+      style={{ width: size, height: size }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onDoubleClick={() => onChange(spec.default, createId())}
+      onKeyDown={onKeyDown}
+      onFocus={onFocus}
+      onBlur={() => setKeyFocused(false)}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
     >
-      <div
-        ref={element}
-        role="slider"
-        tabIndex={0}
-        aria-label={label}
-        aria-valuemin={spec.min}
-        aria-valuemax={spec.max}
-        aria-valuenow={value}
-        aria-valuetext={format(value)}
-        className="cursor-ns-resize touch-none rounded-full"
-        style={{ width: size, height: size }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        onDoubleClick={() => onChange(spec.default, createId())}
-        onKeyDown={onKeyDown}
-      >
-        <svg viewBox="0 0 36 36" className="size-full overflow-visible">
-          <circle cx="18" cy="18" r="11" className="fill-panel-2 stroke-line" strokeWidth="2" />
+      <svg viewBox="0 0 36 36" className="size-full overflow-visible">
+        <circle cx="18" cy="18" r="11" className="fill-panel-2 stroke-line" strokeWidth="2" />
+        <path
+          d={arc(START, START + SWEEP)}
+          className="stroke-line"
+          strokeWidth="3"
+          fill="none"
+          strokeLinecap="round"
+        />
+        {norm !== zero && (
           <path
-            d={arc(START, START + SWEEP)}
-            className="stroke-line"
+            d={arc(START + SWEEP * zero, angle)}
+            stroke={color}
             strokeWidth="3"
             fill="none"
             strokeLinecap="round"
           />
-          {norm !== zero && (
-            <path
-              d={arc(START + SWEEP * zero, angle)}
-              stroke={color}
-              strokeWidth="3"
-              fill="none"
-              strokeLinecap="round"
-            />
-          )}
-          <line
-            x1="18"
-            y1="18"
-            x2={tip.x}
-            y2={tip.y}
-            className="stroke-ink"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
+        )}
+        <line
+          x1="18"
+          y1="18"
+          x2={tip.x}
+          y2={tip.y}
+          className="stroke-ink"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+
+  if (layout === "inline") {
+    return (
+      <div className="flex items-center gap-1.5" title={title}>
+        {dial}
+        <div className="flex flex-col whitespace-nowrap">
+          <span className="caption">{label}</span>
+          <span className="font-mono text-xs text-ink tabular-nums">{text}</span>
+        </div>
       </div>
-      {!compact && (
-        <span className="font-mono text-[10px] leading-none text-ink-dim uppercase">
-          {active ? format(value) : label}
-        </span>
-      )}
-      {compact && active && (
-        <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 rounded-xs bg-well px-1 font-mono text-[10px] whitespace-nowrap text-ink">
-          {format(value)}
-        </span>
-      )}
+    );
+  }
+  if (layout === "bare") {
+    return (
+      <div className="relative w-min" title={title}>
+        {dial}
+        {(hovered || keyFocused || active) && (
+          <span className="pointer-events-none absolute top-1/2 left-full z-20 ml-1 -translate-y-1/2 rounded-xs border border-line bg-well px-1 font-mono text-2xs whitespace-nowrap text-ink">
+            {label} {text}
+          </span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-w-11 flex-col items-center gap-0.5 whitespace-nowrap" title={title}>
+      <span className="caption">{label}</span>
+      {dial}
+      <span className="font-mono text-2xs text-ink tabular-nums">{text}</span>
     </div>
   );
 }

@@ -9,12 +9,26 @@ export const eq = defineEffect({
   name: "EQ",
   params: {
     low: gain("Low"),
-    lowFreq: { label: "Lo Hz", min: 30, max: 600, default: 120, curve: "exp", unit: "Hz" },
+    lowFreq: { label: "Low frequency", min: 30, max: 600, default: 120, curve: "exp", unit: "Hz" },
     mid: gain("Mid"),
-    midFreq: { label: "Mid Hz", min: 150, max: 8000, default: 1000, curve: "exp", unit: "Hz" },
-    midQ: { label: "Mid Q", min: 0.2, max: 8, default: 0.9, curve: "exp" },
+    midFreq: {
+      label: "Mid frequency",
+      min: 150,
+      max: 8000,
+      default: 1000,
+      curve: "exp",
+      unit: "Hz",
+    },
+    midQ: { label: "Mid width", min: 0.2, max: 8, default: 0.9, curve: "exp", unit: "Q" },
     high: gain("High"),
-    highFreq: { label: "Hi Hz", min: 1500, max: 16000, default: 6000, curve: "exp", unit: "Hz" },
+    highFreq: {
+      label: "High frequency",
+      min: 1500,
+      max: 16000,
+      default: 6000,
+      curve: "exp",
+      unit: "Hz",
+    },
   },
   create(ctx) {
     const low = ctx.createBiquadFilter();

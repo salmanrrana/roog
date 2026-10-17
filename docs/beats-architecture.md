@@ -26,18 +26,19 @@ An FL Studio-style beat maker at `beats.html`: channel rack, piano roll, pattern
 
 ```
 main.tsx, styles.css   entry (awaits bootPersistence, then renders) + theme tokens
-app/                   shell layout, TransportBar, workspace view registry, global shortcuts
+app/                   shell layout, TransportBar, first-run hint bar, shortcuts sheet, workspace view registry, global shortcuts
 core/                  pure domain, no React/audio: schema, migrate, defaults, commands,
                        timing, schedule, params, contracts, ids, samples (sample-id prefixes)
 state/                 project-store (project + undo), ui-store (view, selection, transport mode)
-ui/                    Knob, Meter, LedButton, canvas, frame, timeline, hotkeys, menu, toast,
-                       dnd (sample drag type), theme, specs
+ui/                    shared controls: Button + Select, Segmented, Knob, ParamControl, MuteLed,
+                       LedButton, Meter, Dialog, RenameField, menu, toast (+ toastWithUndo);
+                       canvas, frame, timeline, hotkeys, dnd (sample drag type), theme, specs
 engine/                index (BeatsEngine singleton), transport (pure timing), graph (mixer
                        graph for any BaseAudioContext), buffers (sample cache), clock (+worker), wav
 instruments/ effects/  registries + implementations (sampler, synth; filter, eq, delay, reverb,
                        drive, compressor)
 sounds/                factory kit recipes (factory.ts) + shared DSP helpers (dsp.ts)
-persistence/           db (idb schema), autosave, samples, projects (menu actions), file-format
+persistence/           db (idb schema), autosave (+ `useSaveStatus`: Saved / Saving… / Not saved), samples, projects (menu actions), file-format
 panels/channel-rack/   rack rows, one step canvas, channel settings, rack actions
 panels/browser/        factory sounds + "My samples", import, drag to rack
 panels/piano-roll/     note grid, keyboard, ruler, velocity lane, toolbar, note commands
@@ -53,10 +54,12 @@ Lint-enforced: `core/` imports nothing from `state/ui/engine/persistence/panels/
 Ticks at 96 PPQ, 4/4. `STEP_TICKS = 24` (a 16th), `BAR_TICKS = 384`.
 
 - **Project**: `version, id, name, createdAt, updatedAt, bpm, swing, channels[], patterns[], playlist{tracks[], clips[]}, mixer{master, inserts[]}`.
-- **Channel**: `instrument` (registry key) + `params` (numbers) + `sampleId` (`factory:kick` / `user:<sha256>` / null), `volume, pan, muted, mixerTrackId` (`"master"` or an insert id). New channels get their own insert.
+- **Channel**: `instrument` (registry key) + `params` (numbers) + `sampleId` (`factory:kick` / `user:<sha256>` / null), `volume, pan, muted, solo, mixerTrackId` (`"master"` or an insert id). New channels get their own insert.
 - **Pattern**: `steps` (grid length) + `notes: Record<channelId, Note[]>`. Note = `{id, tick, length, pitch, velocity}`. Length = step grid, grown to whole bars by note starts (`patternLength`).
 - **Clip**: `{patternId, trackId, start, length}`; longer than the pattern = it repeats; notes cut at the clip end.
-- **MixerTrack**: `volume, pan, muted, effects: EffectSlot[]` (`{kind, enabled, params}`). Solo is a command (mutes the others), not state.
+- **MixerTrack**: `volume, pan, muted, solo, effects: EffectSlot[]` (`{kind, enabled, params}`). Solo is its own flag, apart from mute: while one channel (or insert) is soloed the engine silences the others, and clearing it leaves hand-set mutes alone. The rack and mixer show a "Solo: X" chip while it applies.
+- Channel and pattern names stay unique (`uniqueName`). Renaming a channel also renames its own insert (one only it feeds that still has its old name).
+- **New project** is the factory kit with no steps or clips; **New from demo beat** adds the starter groove.
 - Selection, view and transport mode are **UI state** (`ui-store`), never saved or undone.
 
 ## Data flow
@@ -86,13 +89,34 @@ engine.getPlayhead() / readMeter() ← read inside useFrame → drawn on canvas 
 
 ## Extension points
 
-- **Instrument**: `instruments/foo.ts` with `defineInstrument({ name, params, usesSample, create })`, add to `instruments/index.ts`. Rack knobs come from `params`; old projects pick up new params automatically. `DEFAULT_INSTRUMENT` is the sampler: anything that loads a sample into a channel uses it.
+- **Instrument**: `instruments/foo.ts` with `defineInstrument({ name, params, usesSample, create })`, add to `instruments/index.ts`. Rack knobs come from `params`; old projects pick up new params automatically. A param with `options` renders as a `Segmented` control; `ParamSpec.format` sets a custom readout. `DEFAULT_INSTRUMENT` is the sampler: anything that loads a sample into a channel uses it.
 - **Effect**: `effects/foo.ts` with `defineEffect(...)`, add to `effects/index.ts`. The mixer lists every registry entry. Use `effects/smooth.ts` for click-free param changes.
 - **Factory sound**: append to `sounds/factory.ts`. Ids are saved in projects: never rename one.
 - **Workspace view**: `panels/foo/index.tsx`, add the id to `WorkspaceView` (`state/ui-store.ts`) and an entry in `app/views.ts`.
 - **Project field**: add it to the schema with a default (`z._default(...)`). Renames/reshapes: bump `PROJECT_VERSION`, add a step in `core/migrate.ts`.
 - **Drop target for sounds**: accept `carriesSamples(dataTransfer)` (`ui/dnd.ts`), read `SAMPLE_MIME` for browser sounds, pass files to `importAudioFiles`.
 - **Shortcut**: `useHotkeys({...})` in the owning component, then update the map below.
+
+## Design system
+
+Warm colors are the instrument talking, cool colors are your music, ink is what you picked. Tokens live in `styles.css`; canvases read the same ones through `themeColors()`.
+
+| Token     | Means only                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `hot`     | Time is moving: playhead, Play while playing, the wordmark                                                                           |
+| `acid`    | Sound on / OK: on-LEDs, meter below -6 dB, saved, drops that add a sound                                                             |
+| `amber`   | Attention: solo, drops that replace, warnings, meter -6..-1 dB, busy text                                                            |
+| `rec`     | Danger / too loud / failed: clip, destructive actions, errors                                                                        |
+| `ink`     | You picked this: selection outlines, pressed segment, active tool/tab                                                                |
+| `focus`   | Keyboard focus rings and the step-grid keyboard cursor                                                                               |
+| `ink-dim` | Secondary text (captions, units). `ink-mute`: disabled and decoration only                                                           |
+| Swatches  | Channel and pattern identity (`SWATCHES` in `core/defaults.ts`, cool hues only: Sky, Pink, Teal, Violet, Ice, Magenta, Blue, Purple) |
+
+- **Type:** Anton only for the wordmark, `panel-title`, mixer strip names and dialog titles. Inter for names, JetBrains Mono for numbers. Scale: `text-2xs` 11px (captions, units, kbd; nothing in the DOM is smaller), `text-xs` 12px, `text-sm` 14px, `panel-title` 16px. `caption` (11px mono uppercase, `ink-dim`) labels every control. Canvas text uses `CANVAS_FONT`.
+- **Controls:** knob = continuous amount (`Knob` layouts `stack` / `inline` / `bare`) · `Segmented` = pick one of a few (`ParamControl` picks for you) · `Select` = long list · `MuteLed` = sound on/off · `Button` (`neutral` / `ghost` / `danger`, `sm` / `md`) = do something · `LedButton` = a single toggle. Values are visible at rest; every number has a unit (`formatParam`).
+- **Rename:** `RenameField` commits on Enter or blur, Escape cancels, empty reverts. Knobs reset on double-click.
+- **Feedback:** edits the user didn't watch happen get `toastWithUndo` (replaced sound, deleted channel, deleted pattern with clips, deleted sample, which names the channels that go silent). Imports always report what happened. Save status sits next to the project name. No `window.confirm`/`alert`: use `Dialog` or Undo.
+- **Keyboard rules (`ui/hotkeys.ts`):** Ctrl/Cmd+S always saves. Otherwise global keys are off in text fields and while a modal `<dialog>` is open. A focused `<select>` owns arrows/Home/End/PageUp/PageDown/Enter. Buttons, radios, tabs, links and menu items own Space/Enter only when focused from the keyboard (`:focus-visible`), so Space still plays after a mouse click.
 
 ## Performance rules (everyone)
 
@@ -109,14 +133,14 @@ engine.getPlayhead() / readMeter() ← read inside useFrame → drawn on canvas 
 
 ## Shortcut map
 
-| Owner          | Keys                                                                                                                                |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Global (`app`) | Space play/stop · L pattern/song · F5 playlist · F6 rack · F7 piano roll · F9 mixer · Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y · Ctrl+S · [ ] |
-| RACK           | 1–0 mute channel n · Shift+1–0 solo · Alt+↑/↓ move selected channel · Alt+C clone selected · Alt+Delete delete selected             |
-| PIANO          | P draw · B paint · D delete · E select · Delete · Ctrl+A/C/X/V/D · Ctrl+Q quantize · ↑/↓ semitone · Ctrl+↑/↓ octave · ←/→ nudge     |
-| PLAYLIST       | P draw · B paint · D delete · E select · Delete · Ctrl+A/C/V/D                                                                      |
+| Owner          | Keys                                                                                                                                                                                                                   |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Global (`app`) | Space play/stop · L pattern/song · F5 playlist · F6 channel rack · F7 piano roll · F9 mixer · Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y · Ctrl+S · [ ] · ? shortcuts sheet                                                        |
+| RACK           | 1–0 mute channel n · Shift+1–0 solo · Alt+↑/↓ move selected channel · Alt+C clone selected · Alt+Delete delete selected · F2 / double-click rename · arrows + Enter on the step grid                                   |
+| PIANO          | Click a note in any tool selects it · P draw · B paint · D delete · E select · Delete · Ctrl+A/C/X/V/D (V pastes after the copied block; repeats stack) · Ctrl+Q quantize · ↑/↓ semitone · Ctrl+↑/↓ octave · ←/→ nudge |
+| PLAYLIST       | P draw · B paint · D delete · E select · Delete · Ctrl+A/C/V/D · moves never overlap clips                                                                                                                             |
 
-Mouse everywhere: wheel scroll, Shift+wheel horizontal, Ctrl+wheel zoom, Alt bypasses snap, Alt+wheel = velocity (piano roll).
+Mouse everywhere: wheel scroll, Shift+wheel horizontal, Ctrl+wheel zoom, Alt bypasses snap, Alt+wheel = velocity (piano roll), double-click a knob resets it.
 
 ## Out of v1 (on purpose)
 
@@ -128,6 +152,8 @@ v1 is built: the six original work packages are merged and an end-to-end browser
 
 - Delay isn't tempo-synced (would need BPM in `Effect.update`); meters are mono peaks.
 - A sample that fails to load is not retried until reload; a pattern-length change mid-play can jump the playhead inside the loop.
-- Playlist: resize affects only the grabbed clip, snap is fixed to bars (Alt for free), no playhead auto-scroll.
-- Piano roll: no edge auto-scroll or vertical zoom; paste lands at the copied position.
-- Two tabs on the same project: last write wins. Deleting a user sample doesn't check which channels use it.
+- Playlist: resize affects only the grabbed clip, snap is fixed to bars (Alt for free).
+- Piano roll: no edge auto-scroll or vertical zoom.
+- No keyboard editing on the piano roll and playlist canvases.
+- Per-instrument params aren't remembered when a channel switches instruments.
+- Two tabs on the same project: last write wins.

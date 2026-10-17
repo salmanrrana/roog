@@ -3,29 +3,70 @@
 /*
  * ROOG Beats theme. The single source of truth for colors and fonts: Tailwind
  * classes (bg-panel, text-hot...) and canvas code (ui/theme.ts) both read these.
- * PRODUCT.md: Moog legibility, Death By Audio attitude. Loud color only where it
- * carries signal or state.
+ * PRODUCT.md: Moog legibility, Death By Audio attitude. Each loud color means one
+ * thing (docs/beats-architecture.md "Design system"). Warm = the instrument talking,
+ * cool = your music (channel/pattern colors), ink = what you picked.
  */
 @theme static {
   --color-well: oklch(14% 0.01 264);
   --color-panel: oklch(19% 0.012 264);
   --color-panel-2: oklch(24% 0.014 264);
   --color-line: oklch(34% 0.014 264);
+  /* What you picked: selection outlines, pressed segments, active tool. */
   --color-ink: oklch(95% 0.012 92);
+  /* Secondary text: captions, labels, units. */
   --color-ink-dim: oklch(72% 0.014 264);
-  /* Playhead, play button, active edits. */
+  /* Disabled text and decoration (minor ticks, END dashes). Not for text you must read. */
+  --color-ink-mute: oklch(58% 0.012 264);
+  /* Time is moving: playhead, play button while playing. */
   --color-hot: oklch(68% 0.21 40);
-  /* Selection and current mode. */
+  /* Attention: solo, replace-drop, warnings, busy states. */
   --color-amber: oklch(80% 0.16 75);
-  /* LEDs on, lit steps, meters. */
+  /* Sound on / OK: on-LEDs, meter fill, saved. */
   --color-acid: oklch(88% 0.2 125);
-  /* Clipping and destructive actions. */
+  /* Danger, too loud, failed: clip, destructive actions, errors. */
   --color-rec: oklch(64% 0.23 27);
+  /* Keyboard focus only. */
   --color-focus: oklch(74% 0.17 250);
 
   --font-display: "Anton", "Arial Narrow", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Smallest DOM text: captions, units, kbd. Nothing in the DOM goes below it. */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 14px;
+
+  /* Brief acid wash, e.g. a Browser sound while it previews. */
+  --animate-flash: flash 700ms ease-out;
+  @keyframes flash {
+    from {
+      background-color: color-mix(in oklch, var(--color-acid) 25%, transparent);
+    }
+    to {
+      background-color: transparent;
+    }
+  }
+}
+
+/* Label for every control and column header. */
+@utility caption {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-dim);
+}
+
+/* Panel titles: Browser, Channel rack, Mixer... */
+@utility panel-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink);
 }
 
 @layer base {
@@ -40,6 +81,11 @@
   :focus-visible {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
+  }
+
+  /* Canvases sit in scroll containers, so their ring goes inside. */
+  canvas:focus-visible {
+    outline-offset: -2px;
   }
 
   @media (prefers-reduced-motion: reduce) {

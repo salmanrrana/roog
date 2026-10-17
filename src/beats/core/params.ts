@@ -15,6 +15,8 @@ export interface ParamSpec {
   readonly unit?: string;
   /** Labels for an enum param; the value is the index. */
   readonly options?: readonly string[];
+  /** Custom readout (e.g. pan "L 40"). Display only, never stored. */
+  readonly format?: (value: number) => string;
 }
 
 export type ParamSpecs = Readonly<Record<string, ParamSpec>>;
@@ -74,11 +76,27 @@ export function normToParam(spec: ParamSpec, norm: number): number {
   return clampParam(spec, raw);
 }
 
-/** Human-readable value for knob readouts ("440 Hz", "Saw", "-3 st"). */
+/**
+ * Human-readable value for knob readouts: the option label, else `spec.format`, else
+ * by unit: "80%", "1 ms" / "80 ms" / "1.80 s", "440 Hz" / "2.4 kHz", "-3 st".
+ */
 export function formatParam(spec: ParamSpec, value: number): string {
   if (spec.options) return spec.options[Math.round(value)] ?? "?";
+  if (spec.format) return spec.format(value);
   const abs = Math.abs(value);
+  if (spec.unit === "%") return `${Math.round(value * 100)}%`;
+  if (spec.unit === "s" && abs < 1) {
+    const ms = value * 1000;
+    const whole = Math.abs(ms - Math.round(ms)) < 1e-6;
+    return `${Math.abs(ms) < 10 && !whole ? ms.toFixed(1) : Math.round(ms)} ms`;
+  }
+  if (spec.unit === "s") return `${value.toFixed(2)} s`;
+  if (spec.unit === "Hz" && abs >= 1000) {
+    const khz = value / 1000;
+    return `${Math.abs(khz) < 10 ? Number(khz.toFixed(1)) : Math.round(khz)} kHz`;
+  }
+  if (spec.unit === "Hz") return `${Math.round(value)} Hz`;
   const digits = abs >= 100 || Number.isInteger(value) ? 0 : abs >= 10 ? 1 : 2;
-  const text = spec.unit === "%" ? `${Math.round(value * 100)}` : value.toFixed(digits);
+  const text = value.toFixed(digits);
   return spec.unit ? `${text} ${spec.unit}` : text;
 }

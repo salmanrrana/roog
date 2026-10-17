@@ -10,20 +10,21 @@ interface FaderProps {
   readonly label: string;
 }
 
-/** Linear gain → "+1.9", "-6.0", "-inf" (dB). */
+/** Linear gain → "+1.9", "-6.0", "-inf". Numeric only: callers add the "dB" unit. */
 export function formatDb(gain: number): string {
   if (gain <= 0.00001) return "-inf";
   const db = 20 * Math.log10(gain);
   return `${db > 0.05 ? "+" : ""}${db.toFixed(1)}`;
 }
 
-/** dB marks drawn beside the groove. */
+/** Numbered dB marks drawn left of the groove. */
 const MARKS = [0, -6, -12, -24] as const;
 
 /**
  * Vertical console fader. Drag anywhere on it (relative, Shift = fine), wheel,
  * arrow/Page keys, double-click to reset. Position is linear in gain, so unity
- * sits at 80% of the travel with headroom above it.
+ * sits at 80% of the travel with headroom above it. Numbered ticks sit in a
+ * column left of the groove; focus shows only from the keyboard (:focus-visible).
  */
 export function Fader({ spec, value, onChange, label }: FaderProps) {
   const element = useRef<HTMLDivElement>(null);
@@ -98,7 +99,7 @@ export function Fader({ spec, value, onChange, label }: FaderProps) {
       aria-valuenow={value}
       aria-valuetext={`${formatDb(value)} dB`}
       title={`${label}: ${formatDb(value)} dB`}
-      className="relative h-full w-7 cursor-ns-resize touch-none rounded-sm"
+      className="relative h-full w-12 cursor-ns-resize touch-none rounded-sm select-none"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={() => (drag.current = null)}
@@ -109,16 +110,23 @@ export function Fader({ spec, value, onChange, label }: FaderProps) {
       {/* Travel area inset by half the cap height so the cap never leaves the box. */}
       <div className="absolute inset-x-0 top-2 bottom-2">
         {MARKS.map((db) => (
-          <span
+          <div
             key={db}
             aria-hidden="true"
-            className={`absolute left-0 h-px ${db === 0 ? "w-full bg-ink-dim" : "w-1.5 bg-line"}`}
+            className="absolute inset-x-0 flex translate-y-1/2 items-center"
             style={{ bottom: `${paramToNorm(spec, 10 ** (db / 20)) * 100}%` }}
-          />
+          >
+            <span
+              className={`w-5 text-right font-mono text-2xs leading-none tabular-nums ${db === 0 ? "text-ink" : "text-ink-dim"}`}
+            >
+              {db}
+            </span>
+            <span className={`ml-0.5 h-px w-1.5 ${db === 0 ? "bg-ink" : "bg-line"}`} />
+          </div>
         ))}
-        <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 rounded-full bg-well shadow-[inset_0_0_0_1px_var(--color-line)]" />
+        <div className="absolute inset-y-0 left-[34px] w-1 -translate-x-1/2 rounded-full bg-well shadow-[inset_0_0_0_1px_var(--color-line)]" />
         <div
-          className="absolute left-1/2 h-4 w-6 -translate-x-1/2 translate-y-1/2 rounded-[2px] border border-ink-dim bg-panel-2 shadow-md shadow-black/60"
+          className="absolute left-[34px] h-4 w-6 -translate-x-1/2 translate-y-1/2 rounded-[2px] border border-ink-dim bg-panel-2 shadow-md shadow-black/60"
           style={{ bottom: `${norm * 100}%` }}
         >
           <div className="mx-auto mt-[6px] h-0.5 w-4 bg-ink" />

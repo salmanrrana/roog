@@ -60,16 +60,21 @@ export function copyNotes(notes: readonly Note[], dTick = 0): Note[] {
 }
 
 /**
- * Copies placed right after the originals (Ctrl+D). The offset covers the beats
- * the notes occupy, so a one-bar riff repeats one bar later.
+ * How far copies move to land right after `notes`: the beats they occupy, from
+ * the start rounded down to the end rounded up, so a one-bar riff repeats one bar later.
  */
-export function duplicateNotes(notes: readonly Note[]): Note[] {
-  if (notes.length === 0) return [];
+export function noteSpan(notes: readonly Note[]): number {
+  if (notes.length === 0) return 0;
   let start = Infinity;
   let end = 0;
   for (const note of notes) {
     start = Math.min(start, note.tick);
     end = Math.max(end, note.tick + note.length);
   }
-  return copyNotes(notes, ceilTo(end, BEAT_TICKS) - Math.floor(start / BEAT_TICKS) * BEAT_TICKS);
+  return ceilTo(end, BEAT_TICKS) - Math.floor(start / BEAT_TICKS) * BEAT_TICKS;
+}
+
+/** Copies placed right after the originals (Ctrl+D). */
+export function duplicateNotes(notes: readonly Note[]): Note[] {
+  return copyNotes(notes, noteSpan(notes));
 }

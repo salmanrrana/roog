@@ -96,4 +96,19 @@ export default tseslint.config(
       "no-restricted-imports": ["error", { patterns: beatsBoundaries.panels }],
     },
   },
+  // Playwright end-to-end specs (run in Node, drive the browser).
+  {
+    files: ["tests/e2e/**/*.ts", "playwright.config.ts"],
+    extends: [
+      js.configs.recommended,
+      ...tseslint.configs.recommendedTypeChecked,
+    ],
+    languageOptions: {
+      globals: globals.node,
+      parserOptions: {
+        project: "./tsconfig.node.json",
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
 );

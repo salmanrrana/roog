@@ -1,24 +1,32 @@
-import { findChannel, setChannelInstrument, setChannelParam, updateChannel } from "@/core/commands";
-import { MASTER_ID } from "@/core/defaults";
+import { useEffect, useRef } from "react";
+import { findChannel, setChannelParam, updateChannel } from "@/core/commands";
+import { engine } from "@/engine";
 import { getInstrument, instruments } from "@/instruments";
 import { useSampleLibrary } from "@/persistence";
 import { factorySounds } from "@/sounds/factory";
 import { edit, useProjectStore } from "@/state/project-store";
-import { Knob } from "@/ui/Knob";
-import { setChannelSample } from "./actions";
+import { Button, Select } from "@/ui/Button";
+import { ParamControl } from "@/ui/ParamControl";
+import { routeOptions, setChannelSample, setInstrument } from "./actions";
 import { toggleExpanded } from "./rack-store";
 
-const SELECT =
-  "h-7 min-w-0 rounded-sm border border-line bg-well px-1.5 text-xs text-ink hover:border-ink-dim";
-
 /**
- * Expanded settings for one channel, shown under the grid: instrument, sample,
- * mixer route, and a knob per instrument param (from the registry's specs).
+ * Settings band for one channel, under the rack: instrument, sample (previewed
+ * when picked), Out, and a ParamControl per instrument param (knobs for amounts,
+ * segmented buttons for choices). Scrolls itself into view when opened.
  */
 export function ChannelSettings({ channelId }: { readonly channelId: string }) {
   const channel = useProjectStore((s) => findChannel(s.project, channelId));
   const inserts = useProjectStore((s) => s.project.mixer.inserts);
   const samples = useSampleLibrary((s) => s.samples);
+  const region = useRef<HTMLElement>(null);
+
+  // Keep the whole panel in view when it opens, and when a new instrument changes its size.
+  const instrument = channel?.instrument;
+  useEffect(() => {
+    region.current?.scrollIntoView({ block: "nearest" });
+  }, [channelId, instrument]);
+
   if (!channel) return null;
 
   const def = getInstrument(channel.instrument);
@@ -30,106 +38,132 @@ export function ChannelSettings({ channelId }: { readonly channelId: string }) {
 
   return (
     <section
+      ref={region}
       aria-label={`${channel.name} settings`}
-      className="flex flex-wrap items-end gap-x-5 gap-y-3 border-t-2 bg-panel-2/60 px-3 py-2.5"
+      className="border-t-2 bg-panel-2/60 px-3 py-2.5"
       style={{ borderTopColor: channel.color }}
     >
-      <div className="flex flex-col gap-1">
-        <h3 className="font-display text-lg leading-none tracking-wide uppercase">
+      <div className="mb-2 flex items-center gap-2">
+        <h3 className="truncate font-display text-lg leading-none tracking-wide uppercase">
           {channel.name}
         </h3>
-        <button
-          type="button"
+        <span className="caption">settings</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Close settings"
+          title="Close settings"
+          className="ml-auto"
           onClick={() => toggleExpanded(channelId)}
-          className="self-start font-mono text-[10px] text-ink-dim uppercase hover:text-ink"
         >
-          Close ▴
-        </button>
+          ✕
+        </Button>
       </div>
 
-      <label className="flex flex-col gap-1 font-mono text-[10px] text-ink-dim uppercase">
-        Instrument
-        <select
-          className={SELECT}
-          value={channel.instrument}
-          onChange={(event) => edit((p) => setChannelInstrument(p, channelId, event.target.value))}
-        >
-          {Object.entries(instruments).map(([kind, item]) => (
-            <option key={kind} value={kind}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="flex flex-wrap items-start gap-x-5 gap-y-3">
+        <div className="flex flex-col gap-1">
+          <span className="caption">Instrument</span>
+          <Select
+            aria-label="Instrument"
+            value={channel.instrument}
+            onChange={(event) => setInstrument(channelId, event.target.value)}
+          >
+            {Object.entries(instruments).map(([kind, item]) => (
+              <option key={kind} value={kind}>
+                {item.name}
+              </option>
+            ))}
+          </Select>
+          {!def.usesSample && channel.sampleId !== null && (
+            <p className="max-w-48 text-2xs text-ink-dim">
+              The sample stays on this channel. Switch back to Sampler to hear it.
+            </p>
+          )}
+        </div>
 
-      {def.usesSample && (
-        <label className="flex flex-col gap-1 font-mono text-[10px] text-ink-dim uppercase">
-          Sample
-          <select
-            className={`${SELECT} max-w-48`}
-            value={sampleId}
+        {def.usesSample && (
+          <div className="flex flex-col gap-1">
+            <span className="caption">Sample</span>
+            <span className="flex items-center gap-1.5">
+              <Select
+                aria-label="Sample"
+                className="w-44"
+                value={sampleId}
+                onChange={(event) => {
+                  const id = event.target.value;
+                  if (!id) return edit((p) => updateChannel(p, channelId, { sampleId: null }));
+                  setChannelSample(channelId, id);
+                  engine.previewSample(id);
+                }}
+              >
+                <option value="">None</option>
+                {!knownSample && <option value={sampleId}>Missing sample</option>}
+                <optgroup label="Factory">
+                  {factorySounds.map((sound) => (
+                    <option key={sound.id} value={sound.id}>
+                      {sound.name}
+                    </option>
+                  ))}
+                </optgroup>
+                {samples.length > 0 && (
+                  <optgroup label="My samples">
+                    {samples.map((sample) => (
+                      <option key={sample.id} value={sample.id}>
+                        {sample.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </Select>
+              {!knownSample && (
+                <span className="text-amber" title="Sample missing: it was deleted from My samples">
+                  ⚠
+                </span>
+              )}
+            </span>
+            {sampleId === "" && (
+              <p className="max-w-48 text-2xs text-ink-dim">
+                Drop a sound on this row or pick one here
+              </p>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-col gap-1">
+          <span className="caption">Out</span>
+          <Select
+            aria-label="Out"
+            className="w-44"
+            value={channel.mixerTrackId}
             onChange={(event) =>
-              event.target.value
-                ? setChannelSample(channelId, event.target.value)
-                : edit((p) => updateChannel(p, channelId, { sampleId: null }))
+              edit((p) => updateChannel(p, channelId, { mixerTrackId: event.target.value }))
             }
           >
-            <option value="">None</option>
-            {!knownSample && <option value={sampleId}>Missing sample</option>}
-            <optgroup label="Factory">
-              {factorySounds.map((sound) => (
-                <option key={sound.id} value={sound.id}>
-                  {sound.name}
-                </option>
-              ))}
-            </optgroup>
-            {samples.length > 0 && (
-              <optgroup label="My samples">
-                {samples.map((sample) => (
-                  <option key={sample.id} value={sample.id}>
-                    {sample.name}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-        </label>
-      )}
+            {routeOptions(inserts).map((track) => (
+              <option key={track.id} value={track.id}>
+                {track.label}
+              </option>
+            ))}
+          </Select>
+        </div>
 
-      <label className="flex flex-col gap-1 font-mono text-[10px] text-ink-dim uppercase">
-        Mixer
-        <select
-          className={`${SELECT} max-w-40`}
-          value={channel.mixerTrackId}
-          onChange={(event) =>
-            edit((p) => updateChannel(p, channelId, { mixerTrackId: event.target.value }))
-          }
+        <div
+          className="flex flex-wrap items-start gap-4"
+          role="group"
+          aria-label={`${def.name} params`}
         >
-          <option value={MASTER_ID}>Master</option>
-          {inserts.map((insert, index) => (
-            <option key={insert.id} value={insert.id}>
-              {index + 1} · {insert.name}
-            </option>
+          {Object.entries(def.params).map(([key, spec]) => (
+            <ParamControl
+              key={key}
+              spec={spec}
+              value={channel.params[key] ?? spec.default}
+              color={channel.color}
+              onChange={(value, gesture) =>
+                edit((p) => setChannelParam(p, channelId, key, value), gesture)
+              }
+            />
           ))}
-        </select>
-      </label>
-
-      <div
-        className="flex flex-wrap items-end gap-3"
-        role="group"
-        aria-label={`${def.name} params`}
-      >
-        {Object.entries(def.params).map(([key, spec]) => (
-          <Knob
-            key={key}
-            spec={spec}
-            value={channel.params[key] ?? spec.default}
-            color={channel.color}
-            onChange={(value, gesture) =>
-              edit((p) => setChannelParam(p, channelId, key, value), gesture)
-            }
-          />
-        ))}
+        </div>
       </div>
     </section>
   );

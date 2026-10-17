@@ -1,13 +1,13 @@
 /**
- * Canvas painting for the playlist timeline: bar ruler, track rows and clips with
- * a mini note preview. Called from the static canvas layer; the playhead and
+ * Canvas painting for the playlist timeline: bar ruler with the END marker, track
+ * rows (muted lanes darker) and clips with a mini note preview. Called from the static canvas layer; the playhead and
  * marquee are drawn on the overlay in Timeline.tsx.
  */
 import { patternLength } from "@/core/schedule";
 import type { Clip, Pattern, PlaylistTrack } from "@/core/schema";
 import { BAR_TICKS } from "@/core/timing";
 import type { CanvasSize } from "@/ui/canvas";
-import { themeColors } from "@/ui/theme";
+import { CANVAS_FONT, themeColors } from "@/ui/theme";
 import { type TimelineView, drawTimeGrid, tickToX, xToTick } from "@/ui/timeline";
 import { ROW_HEIGHT, RULER_HEIGHT } from "./view-store";
 
@@ -19,6 +19,8 @@ export interface Scene {
   readonly patterns: ReadonlyMap<string, Pattern>;
   readonly selected: ReadonlySet<string>;
   readonly songEnd: number;
+  /** Pattern looping in pattern mode while playing; its clips get a hot top bar. */
+  readonly playingPatternId: string | null;
 }
 
 interface Preview {
@@ -76,6 +78,14 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, size: CanvasSize, sc
   drawTimeGrid(ctx, view, { ...size, height: height - RULER_HEIGHT }, colors);
   ctx.restore();
 
+  // Muted tracks: a darker lane.
+  ctx.fillStyle = colors.well;
+  ctx.globalAlpha = 0.6;
+  tracks.forEach((track, row) => {
+    if (track.muted) ctx.fillRect(0, RULER_HEIGHT + row * ROW_HEIGHT - scrollY, width, ROW_HEIGHT);
+  });
+  ctx.globalAlpha = 1;
+
   ctx.fillStyle = colors.line;
   for (let row = 1; row <= tracks.length; row += 1) {
     const y = RULER_HEIGHT + row * ROW_HEIGHT - scrollY;
@@ -83,6 +93,7 @@ export function drawTimeline(ctx: CanvasRenderingContext2D, size: CanvasSize, sc
   }
 
   drawClips(ctx, size, scene);
+  drawSongEnd(ctx, size, scene, tracksBottom);
   drawRuler(ctx, size, scene);
 }
 
@@ -91,7 +102,7 @@ function drawClips(ctx: CanvasRenderingContext2D, { width, height }: CanvasSize,
   const { view, scrollY, tracks, patterns, selected } = scene;
   const rowOf = new Map(tracks.map((track, index) => [track.id, index]));
   const muted = new Set(tracks.filter((track) => track.muted).map((track) => track.id));
-  ctx.font = "bold 10px 'JetBrains Mono', ui-monospace, monospace";
+  ctx.font = CANVAS_FONT.tiny;
   ctx.textBaseline = "middle";
 
   for (const clip of scene.clips) {
@@ -123,7 +134,8 @@ function drawClips(ctx: CanvasRenderingContext2D, { width, height }: CanvasSize,
 
     ctx.globalAlpha = alpha;
     if (selected.has(clip.id)) {
-      ctx.strokeStyle = colors.amber;
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = colors.ink;
       ctx.lineWidth = 2;
       ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
     } else {
@@ -132,6 +144,11 @@ function drawClips(ctx: CanvasRenderingContext2D, { width, height }: CanvasSize,
       ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
     }
     ctx.globalAlpha = 1;
+    // Drawn last so no outline covers it.
+    if (pattern.id === scene.playingPatternId) {
+      ctx.fillStyle = colors.hot;
+      ctx.fillRect(x, y, w, 2);
+    }
   }
 }
 
@@ -190,7 +207,7 @@ function drawRuler(ctx: CanvasRenderingContext2D, { width }: CanvasSize, scene: 
   const every = 2 ** Math.max(0, Math.ceil(Math.log2(32 / barPx)));
   const firstBar = Math.floor(view.scrollTick / BAR_TICKS);
   const lastBar = Math.ceil(xToTick(view, width) / BAR_TICKS);
-  ctx.font = "bold 10px 'JetBrains Mono', ui-monospace, monospace";
+  ctx.font = CANVAS_FONT.label;
   ctx.textBaseline = "middle";
   for (let bar = firstBar - (firstBar % every); bar <= lastBar; bar += every) {
     const x = Math.round(tickToX(view, bar * BAR_TICKS));
@@ -202,11 +219,38 @@ function drawRuler(ctx: CanvasRenderingContext2D, { width }: CanvasSize, scene: 
 
   // Song end: where song mode loops back.
   const endX = Math.round(tickToX(view, songEnd));
-  ctx.fillStyle = colors.amber;
+  ctx.font = CANVAS_FONT.bold;
+  const label = "END";
+  const textWidth = ctx.measureText(label).width;
+  // Left of the line, so it never hides the next bar number.
+  ctx.fillStyle = colors["panel-2"];
+  ctx.fillRect(endX - textWidth - 8, 0, textWidth + 8, RULER_HEIGHT - 1);
+  ctx.fillStyle = colors["ink-dim"];
+  ctx.fillText(label, endX - textWidth - 4, RULER_HEIGHT / 2);
+  ctx.fillStyle = colors["ink-mute"];
+  ctx.fillRect(endX, 0, 1, RULER_HEIGHT);
+}
+
+/** Song end over the track area: a dashed line and the time after it dimmed. */
+function drawSongEnd(
+  ctx: CanvasRenderingContext2D,
+  { width, height }: CanvasSize,
+  { view, songEnd }: Scene,
+  tracksBottom: number,
+) {
+  const endX = Math.round(tickToX(view, songEnd));
+  if (endX > width) return;
+  const bottom = Math.min(height, tracksBottom);
+  ctx.fillStyle = themeColors().well;
+  ctx.globalAlpha = 0.35;
+  ctx.fillRect(Math.max(0, endX), RULER_HEIGHT, width, height - RULER_HEIGHT);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = themeColors()["ink-mute"];
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
   ctx.beginPath();
-  ctx.moveTo(endX, RULER_HEIGHT - 1);
-  ctx.lineTo(endX - 6, RULER_HEIGHT - 9);
-  ctx.lineTo(endX, RULER_HEIGHT - 9);
-  ctx.closePath();
-  ctx.fill();
+  ctx.moveTo(endX + 0.5, RULER_HEIGHT);
+  ctx.lineTo(endX + 0.5, bottom);
+  ctx.stroke();
+  ctx.setLineDash([]);
 }

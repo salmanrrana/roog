@@ -17,7 +17,7 @@ import {
   createPattern,
   createPlaylistTrack,
   createStepNote,
-  paletteColor,
+  nextColor,
 } from "./defaults";
 import { createId } from "./ids";
 import { clampParam, defaultParams } from "./params";
@@ -26,6 +26,20 @@ import { VOLUME_MAX } from "./schema";
 import { MAX_BPM, MIN_BPM, STEP_TICKS } from "./timing";
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+/**
+ * `base` if nobody uses it, else the first free "<stem> <n>" from n = 2, where the
+ * stem is `base` without a trailing number: "Snare" → "Snare 2", "Snare 2" → "Snare 3".
+ */
+export function uniqueName(base: string, taken: Iterable<string>): string {
+  const names = new Set(taken);
+  if (!names.has(base)) return base;
+  const stem = base.replace(/ \d+$/, "");
+  for (let n = 2; ; n += 1) {
+    const name = `${stem} ${n}`;
+    if (!names.has(name)) return name;
+  }
+}
 
 // ---------------------------------------------------------------- lookups
 
@@ -76,12 +90,20 @@ export type ChannelPatch = Partial<
   Pick<Channel, "name" | "color" | "volume" | "pan" | "muted" | "mixerTrackId" | "sampleId">
 >;
 
-/** Add a channel on its own new mixer insert (named after it). Returns the channel id. */
+/**
+ * Add a channel on its own new mixer insert (named after it). The name is made unique
+ * ("Snare 2") and the color defaults to the first unused swatch. Returns the channel id.
+ */
 export function addChannel(project: Project, init: Omit<ChannelInit, "mixerTrackId">): string {
-  const insert = createMixerTrack(init.name);
+  const name = uniqueName(
+    init.name,
+    project.channels.map((channel) => channel.name),
+  );
+  const insert = createMixerTrack(name);
   const channel = createChannel({
     ...init,
-    color: init.color ?? paletteColor(project.channels.length),
+    name,
+    color: init.color ?? nextColor(project.channels.map((channel) => channel.color)),
     mixerTrackId: insert.id,
   });
   project.mixer.inserts.push(insert);
@@ -95,10 +117,23 @@ export function removeChannel(project: Project, channelId: string): void {
   for (const pattern of project.patterns) delete pattern.notes[channelId];
 }
 
+/**
+ * Patch a channel (volume and pan clamped). Renaming a channel also renames its own
+ * insert: one only this channel feeds that still carries the channel's old name.
+ * Shared or custom-named inserts keep their names.
+ */
 export function updateChannel(project: Project, channelId: string, patch: ChannelPatch): void {
   const channel = findChannel(project, channelId);
   if (!channel) return;
+  const oldName = channel.name;
   Object.assign(channel, patch);
+  if (patch.name !== undefined && patch.name !== oldName && channel.mixerTrackId !== MASTER_ID) {
+    const insert = findMixerTrack(project, channel.mixerTrackId);
+    const shared = project.channels.some(
+      (other) => other.id !== channel.id && other.mixerTrackId === channel.mixerTrackId,
+    );
+    if (insert && !shared && insert.name === oldName) insert.name = patch.name;
+  }
   channel.volume = clamp(channel.volume, 0, VOLUME_MAX);
   channel.pan = clamp(channel.pan, -1, 1);
   if (!findMixerTrack(project, channel.mixerTrackId)) channel.mixerTrackId = MASTER_ID;
@@ -140,20 +175,20 @@ export function cloneChannel(project: Project, channelId: string): string | unde
   const copy: Channel = {
     ...source,
     id: createId(),
-    name: `${source.name} 2`,
+    name: uniqueName(
+      source.name,
+      project.channels.map((channel) => channel.name),
+    ),
     params: { ...source.params },
+    solo: false,
   };
   project.channels.splice(index + 1, 0, copy);
   return copy.id;
 }
 
-/** FL-style solo: mute every other channel; soloing the lone unmuted channel again unmutes all. */
+/** Solo one channel (the engine silences the rest); soloing it again clears solo. Mutes are untouched. */
 export function toggleChannelSolo(project: Project, channelId: string): void {
-  const alreadySolo = project.channels.every(
-    (channel) => channel.muted === (channel.id !== channelId),
-  );
-  for (const channel of project.channels)
-    channel.muted = alreadySolo ? false : channel.id !== channelId;
+  for (const channel of project.channels) channel.solo = channel.id === channelId && !channel.solo;
 }
 
 // ---------------------------------------------------------------- steps & notes
@@ -231,20 +266,23 @@ function sanitizeNote(note: Note): Note {
 
 // ---------------------------------------------------------------- patterns
 
-/** New empty pattern named "Pattern N". Returns its id. */
+/** New empty pattern named "Pattern N" (unique) in the first unused swatch color. Returns its id. */
 export function addPattern(project: Project): string {
-  const used = project.patterns.map((pattern) =>
-    Number(/^Pattern (\d+)$/.exec(pattern.name)?.[1] ?? 0),
-  );
   const pattern = createPattern(
-    `Pattern ${Math.max(0, ...used) + 1}`,
-    paletteColor(project.patterns.length),
+    uniqueName(
+      `Pattern ${project.patterns.length + 1}`,
+      project.patterns.map((item) => item.name),
+    ),
+    nextColor(project.patterns.map((item) => item.color)),
   );
   project.patterns.push(pattern);
   return pattern.id;
 }
 
-/** Duplicate a pattern (fresh note ids) right after it. Returns the new id. */
+/**
+ * Duplicate a pattern (fresh note ids) right after it, with a unique name (the clone of
+ * "Pattern 1" is the next free "Pattern N") and an unused color. Returns the new id.
+ */
 export function clonePattern(project: Project, patternId: string): string | undefined {
   const index = project.patterns.findIndex((pattern) => pattern.id === patternId);
   const source = project.patterns[index];
@@ -255,7 +293,16 @@ export function clonePattern(project: Project, patternId: string): string | unde
       list.map((note) => ({ ...note, id: createId() })),
     ]),
   );
-  const copy: Pattern = { ...source, id: createId(), name: `${source.name} copy`, notes };
+  const copy: Pattern = {
+    ...source,
+    id: createId(),
+    name: uniqueName(
+      source.name,
+      project.patterns.map((pattern) => pattern.name),
+    ),
+    color: nextColor(project.patterns.map((pattern) => pattern.color)),
+    notes,
+  };
   project.patterns.splice(index + 1, 0, copy);
   return copy.id;
 }
@@ -355,11 +402,9 @@ export function updateMixerTrack(
   track.pan = clamp(track.pan, -1, 1);
 }
 
-/** FL-style solo across inserts (the master is never muted). */
+/** Solo one insert (the engine silences the rest; never the master); again clears solo. Mutes are untouched. */
 export function toggleInsertSolo(project: Project, trackId: string): void {
-  const inserts = project.mixer.inserts;
-  const alreadySolo = inserts.every((track) => track.muted === (track.id !== trackId));
-  for (const track of inserts) track.muted = alreadySolo ? false : track.id !== trackId;
+  for (const track of project.mixer.inserts) track.solo = track.id === trackId && !track.solo;
 }
 
 /** Append an effect with default params. Returns its slot id, or undefined for unknown kinds. */
