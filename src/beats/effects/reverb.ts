@@ -22,8 +22,8 @@ export const reverb = defineEffect({
   params: {
     // Stepped so a knob drag rebuilds the impulse only every 0.1 s of size.
     size: { label: "Size", min: 0.3, max: 8, default: 1.8, step: 0.1, unit: "s" },
-    predelay: { label: "Pre", min: 0, max: 0.2, default: 0.01, step: 0.001, unit: "s" },
-    damp: { label: "Damp", min: 800, max: 20000, default: 7000, curve: "exp", unit: "Hz" },
+    predelay: { label: "Pre-delay", min: 0, max: 0.2, default: 0.01, step: 0.001, unit: "s" },
+    damp: { label: "Damping", min: 800, max: 20000, default: 7000, curve: "exp", unit: "Hz" },
     mix: { label: "Mix", min: 0, max: 1, default: 0.25, unit: "%" },
   },
   create(ctx) {

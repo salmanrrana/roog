@@ -13,25 +13,38 @@ export const DEFAULT_STEPS = 16;
 export const DEFAULT_VELOCITY = 0.8;
 export const DEFAULT_CHANNEL_VOLUME = 0.8;
 
-/** Saturated signal colors (PRODUCT.md: loud color only where it carries signal). */
-export const PALETTE = [
-  "#ff5a1f",
-  "#ffb020",
-  "#c8f02e",
-  "#2ee6a6",
-  "#2ec4ff",
-  "#7a7cff",
-  "#d65cff",
-  "#ff4f8b",
-] as const;
+export const DEFAULT_PROJECT_NAME = "Untitled beat";
+
+/**
+ * Identity colors for channels and patterns. Cool hues only: warm hues (hot, amber,
+ * acid, rec) are reserved for UI state, so a channel color never reads as a signal.
+ */
+export const SWATCHES = [
+  { name: "Sky", color: "#38bdf8" },
+  { name: "Pink", color: "#f472b6" },
+  { name: "Teal", color: "#2dd4bf" },
+  { name: "Violet", color: "#a78bfa" },
+  { name: "Ice", color: "#a5f3fc" },
+  { name: "Magenta", color: "#e879f9" },
+  { name: "Blue", color: "#6c8cff" },
+  { name: "Purple", color: "#c77dff" },
+] as const satisfies readonly { name: string; color: string }[];
+
+/** Swatch colors in order. */
+export const PALETTE: readonly string[] = SWATCHES.map((swatch) => swatch.color);
 
 /** Pick the palette color for the n-th item. */
 export function paletteColor(index: number): string {
-  return PALETTE[index % PALETTE.length] ?? PALETTE[0];
+  return PALETTE[index % PALETTE.length] ?? SWATCHES[0].color;
+}
+
+/** First swatch color not in `used`; once all are taken, cycles by count. */
+export function nextColor(used: readonly string[]): string {
+  return PALETTE.find((color) => !used.includes(color)) ?? paletteColor(used.length);
 }
 
 export function createMixerTrack(name: string, id: string = createId()): MixerTrack {
-  return { id, name, volume: 1, pan: 0, muted: false, effects: [] };
+  return { id, name, volume: 1, pan: 0, muted: false, solo: false, effects: [] };
 }
 
 export function createPlaylistTrack(name: string): PlaylistTrack {
@@ -52,13 +65,14 @@ export function createChannel(init: ChannelInit): Channel {
   return {
     id: createId(),
     name: init.name,
-    color: init.color ?? PALETTE[0],
+    color: init.color ?? paletteColor(0),
     instrument,
     params: { ...defaultParams(getInstrument(instrument).params) },
     sampleId: init.sampleId ?? null,
     volume: DEFAULT_CHANNEL_VOLUME,
     pan: 0,
     muted: false,
+    solo: false,
     mixerTrackId: init.mixerTrackId,
   };
 }
@@ -86,10 +100,15 @@ const STARTER_KIT = [
 ] as const;
 
 /**
- * The project a first visit (or "New") opens: a small kit, each channel on its
- * own mixer insert, a starter beat in Pattern 1, and that pattern on the playlist.
+ * A new project: a small kit, each channel on its own mixer insert, and Pattern 1.
+ * "demo" (first visit, "New from demo beat") adds a starter beat and puts it on the
+ * playlist; "blank" ("New project") has the same kit with no notes and no clips.
  */
-export function createProject(name = "Untitled beat", now = Date.now()): Project {
+export function createProject(
+  name = DEFAULT_PROJECT_NAME,
+  now = Date.now(),
+  kind: "demo" | "blank" = "demo",
+): Project {
   const inserts: MixerTrack[] = [];
   const channels: Channel[] = [];
   const pattern = createPattern("Pattern 1", paletteColor(0));
@@ -104,7 +123,7 @@ export function createProject(name = "Untitled beat", now = Date.now()): Project
     });
     inserts.push(insert);
     channels.push(channel);
-    if (sound.steps.length > 0)
+    if (kind === "demo" && sound.steps.length > 0)
       pattern.notes[channel.id] = sound.steps.map((step) => createStepNote(step));
   });
 
@@ -123,17 +142,18 @@ export function createProject(name = "Untitled beat", now = Date.now()): Project
     patterns: [pattern],
     playlist: {
       tracks,
-      clips: firstTrack
-        ? [
-            {
-              id: createId(),
-              patternId: pattern.id,
-              trackId: firstTrack.id,
-              start: 0,
-              length: BAR_TICKS * 4,
-            },
-          ]
-        : [],
+      clips:
+        kind === "demo" && firstTrack
+          ? [
+              {
+                id: createId(),
+                patternId: pattern.id,
+                trackId: firstTrack.id,
+                start: 0,
+                length: BAR_TICKS * 4,
+              },
+            ]
+          : [],
     },
     mixer: { master: createMixerTrack("Master", MASTER_ID), inserts },
   };

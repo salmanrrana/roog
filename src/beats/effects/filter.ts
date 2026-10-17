@@ -9,7 +9,7 @@ export const filter = defineEffect({
   params: {
     type: { label: "Type", min: 0, max: 2, default: 0, options: ["Low", "High", "Band"] },
     cutoff: { label: "Cutoff", min: 20, max: 20000, default: 20000, curve: "exp", unit: "Hz" },
-    resonance: { label: "Reso", min: 0.1, max: 20, default: 0.7, curve: "exp" },
+    resonance: { label: "Resonance", min: 0.1, max: 20, default: 0.7, curve: "exp", unit: "Q" },
   },
   create(ctx) {
     const node = ctx.createBiquadFilter();

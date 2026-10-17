@@ -2,8 +2,8 @@ import { useCanvas } from "@/ui/canvas";
 import { drawRuler } from "./draw";
 import { usePianoRoll } from "./store";
 
-/** Bar ruler above the grid; the hot marker is where the pattern loops. */
-export function Ruler({ loopEnd }: { loopEnd: number }) {
+/** Bar ruler above the grid; a dashed line and "END" mark where the pattern loops. */
+export function Ruler({ loopEnd }: { readonly loopEnd: number }) {
   const scrollTick = usePianoRoll((s) => s.scrollTick);
   const pxPerTick = usePianoRoll((s) => s.pxPerTick);
   const view = { scrollTick, pxPerTick, scrollY: 0, rowHeight: 1 };

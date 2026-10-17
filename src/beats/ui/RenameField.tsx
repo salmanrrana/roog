@@ -4,11 +4,13 @@ interface RenameFieldProps {
   readonly onRename: (name: string) => void;
   /** Called when editing ends (commit or cancel). */
   readonly onDone: () => void;
+  /** Accessible name, e.g. "Channel name". */
   readonly label: string;
+  readonly className?: string;
 }
 
-/** Inline rename input: Enter or blur commits, Escape cancels. */
-export function RenameField({ value, onRename, onDone, label }: RenameFieldProps) {
+/** Inline rename input: Enter or blur commits, Escape cancels, empty reverts. */
+export function RenameField({ value, onRename, onDone, label, className = "" }: RenameFieldProps) {
   return (
     <input
       autoFocus
@@ -28,7 +30,7 @@ export function RenameField({ value, onRename, onDone, label }: RenameFieldProps
           event.currentTarget.blur();
         }
       }}
-      className="w-full min-w-0 rounded-sm border border-amber bg-well px-1 py-0.5 text-xs text-ink outline-none"
+      className={`w-full min-w-0 rounded-sm border border-focus bg-well px-1 py-0.5 text-xs text-ink outline-none ${className}`}
     />
   );
 }

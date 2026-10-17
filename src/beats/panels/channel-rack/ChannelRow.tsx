@@ -1,27 +1,55 @@
 import { type KeyboardEvent, type MouseEvent } from "react";
 import { type ChannelPatch, findChannel, updateChannel } from "@/core/commands";
 import { MASTER_ID } from "@/core/defaults";
+import { getInstrument } from "@/instruments";
+import { useSampleLibrary } from "@/persistence";
+import { getFactorySound } from "@/sounds/factory";
 import { edit, useProjectStore } from "@/state/project-store";
 import { openPianoRoll, selectChannel, useUiStore } from "@/state/ui-store";
+import { Button } from "@/ui/Button";
 import { Knob } from "@/ui/Knob";
+import { MuteLed } from "@/ui/MuteLed";
+import { RenameField } from "@/ui/RenameField";
 import { PAN_SPEC, VOLUME_SPEC, formatPan } from "@/ui/specs";
-import { menuPoint, openChannelMenu, openRouteMenu } from "./actions";
+import { menuPoint, openChannelMenu, openRouteMenu, soloedChannelId } from "./actions";
 import { ROW_H } from "./grid";
 import { setRenaming, toggleExpanded, useRackStore } from "./rack-store";
 
+/** Give focus back to a channel's name button (after a rename ends). */
+function focusName(channelId: string) {
+  requestAnimationFrame(() =>
+    document.querySelector<HTMLElement>(`[data-channel-name="${channelId}"]`)?.focus(),
+  );
+}
+
 /**
- * One rack row's DOM controls: mute LED, pan + volume knobs, mixer route, and the
- * name button (click selects, double-click opens the piano roll, right-click or
- * the menu key opens the channel menu, F2 renames). Its steps live on the shared
- * StepGrid canvas, so painting never re-renders rows.
+ * One rack row's DOM controls: mute LED, pan + volume knobs, Out (mixer route),
+ * the name button (click selects, double-click or F2 renames, right-click or the
+ * menu key opens the channel menu), settings and piano-roll buttons. Its steps
+ * live on the shared StepGrid canvas, so painting never re-renders rows.
  */
-export function ChannelRow({ channelId }: { readonly channelId: string }) {
+export function ChannelRow({
+  channelId,
+  index,
+}: {
+  readonly channelId: string;
+  readonly index: number;
+}) {
   const channel = useProjectStore((s) => findChannel(s.project, channelId));
-  const route = useProjectStore((s) => {
+  const insertNumber = useProjectStore((s) => {
     const trackId = findChannel(s.project, channelId)?.mixerTrackId;
-    const index = s.project.mixer.inserts.findIndex((insert) => insert.id === trackId);
-    return trackId === MASTER_ID || index < 0 ? "M" : String(index + 1);
+    return trackId === MASTER_ID
+      ? 0
+      : s.project.mixer.inserts.findIndex((i) => i.id === trackId) + 1;
   });
+  const insertName = useProjectStore((s) => {
+    const trackId = findChannel(s.project, channelId)?.mixerTrackId;
+    return s.project.mixer.inserts.find((insert) => insert.id === trackId)?.name ?? "";
+  });
+  const soloed = useProjectStore((s) => soloedChannelId(s.project) === channelId);
+  const inLibrary = useSampleLibrary((s) =>
+    s.samples.some((sample) => sample.id === channel?.sampleId),
+  );
   const selected = useUiStore((s) => s.channelId === channelId);
   const renaming = useRackStore((s) => s.renamingId === channelId);
   const expanded = useRackStore((s) => s.expandedId === channelId);
@@ -29,6 +57,10 @@ export function ChannelRow({ channelId }: { readonly channelId: string }) {
 
   const change = (patch: ChannelPatch, gesture?: string) =>
     edit((p) => updateChannel(p, channelId, patch), gesture);
+  const usesSample = getInstrument(channel.instrument).usesSample;
+  const missing =
+    usesSample && channel.sampleId !== null && !getFactorySound(channel.sampleId) && !inLibrary;
+  const out = insertNumber > 0 ? `Insert ${insertNumber} · ${insertName}` : "Master";
 
   function onNameKey(event: KeyboardEvent<HTMLButtonElement>) {
     if (event.key !== "F2") return;
@@ -46,95 +78,124 @@ export function ChannelRow({ channelId }: { readonly channelId: string }) {
     <div
       data-channel-row=""
       style={{ height: ROW_H }}
-      className="flex items-center gap-1.5 border-b border-line pr-1 pl-2 data-drop:bg-acid/15 data-drop:outline-2 data-drop:outline-acid"
+      className="relative flex items-center gap-1.5 border-b border-line pr-1 pl-2 data-[drop=replace]:bg-amber/10 data-[drop=replace]:outline-2 data-[drop=replace]:-outline-offset-2 data-[drop=replace]:outline-amber"
     >
-      <button
-        type="button"
-        aria-pressed={channel.muted}
-        aria-label={`Mute ${channel.name}`}
-        title="Mute (1–0, Shift = solo)"
-        onClick={() => change({ muted: !channel.muted })}
-        className="grid size-5 shrink-0 place-items-center rounded-sm border border-line bg-well hover:border-ink-dim"
-      >
-        <span
-          className={`size-2.5 rounded-full ${channel.muted ? "bg-line" : "bg-acid shadow-[0_0_6px_var(--color-acid)]"}`}
-        />
-      </button>
+      <MuteLed
+        muted={channel.muted}
+        name={channel.name}
+        onToggle={() => change({ muted: !channel.muted })}
+        {...(index < 10 ? { shortcut: String((index + 1) % 10) } : {})}
+      />
       <Knob
         spec={PAN_SPEC}
         value={channel.pan}
         size={20}
-        compact
+        layout="bare"
+        label="Pan"
+        name={`${channel.name} pan`}
         format={formatPan}
-        color="var(--color-amber)"
         onChange={(pan, gesture) => change({ pan }, gesture)}
       />
       <Knob
         spec={VOLUME_SPEC}
         value={channel.volume}
         size={20}
-        compact
+        layout="bare"
+        label="Vol"
+        name={`${channel.name} volume`}
         onChange={(volume, gesture) => change({ volume }, gesture)}
       />
       <button
         type="button"
-        title="Mixer insert (click to route)"
-        aria-label={`${channel.name} mixer route: ${route === "M" ? "master" : `insert ${route}`}`}
+        title={`Out: ${out} — click to change`}
+        aria-label={`${channel.name} output`}
         onClick={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           openRouteMenu({ x: rect.left, y: rect.bottom }, channelId);
         }}
-        className="h-5 w-6 shrink-0 rounded-sm border border-line bg-well font-mono text-[10px] text-ink-dim hover:border-ink-dim hover:text-ink"
+        className="h-5 w-20 shrink-0 truncate rounded-sm border border-line bg-well px-1 text-2xs text-ink-dim hover:border-ink-dim hover:text-ink"
       >
-        {route}
+        {insertNumber > 0 ? `Insert ${insertNumber}` : "Master"}
       </button>
       {renaming ? (
-        <input
-          autoFocus
-          defaultValue={channel.name}
-          aria-label="Channel name"
-          onFocus={(event) => event.currentTarget.select()}
-          onBlur={(event) => {
-            const name = event.currentTarget.value.trim();
-            if (name && name !== channel.name) change({ name });
+        <RenameField
+          value={channel.name}
+          label="Channel name"
+          onRename={(name) => change({ name })}
+          onDone={() => {
             setRenaming(null);
+            focusName(channelId);
           }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-            if (event.key === "Escape") {
-              event.currentTarget.value = channel.name;
-              event.currentTarget.blur();
-            }
-          }}
-          className="h-6 w-32 min-w-0 rounded-sm border border-amber bg-well px-1.5 text-xs font-bold text-ink outline-none"
+          className="h-6 w-32! font-bold"
         />
       ) : (
         <button
           type="button"
+          data-channel-name={channelId}
           aria-pressed={selected}
-          title="Click: select · Double-click: piano roll · Right-click: menu"
+          title="Click: select · Double-click or F2: rename · Right-click: more"
           onClick={() => selectChannel(channelId)}
-          onDoubleClick={() => openPianoRoll(channelId)}
+          onDoubleClick={() => setRenaming(channelId)}
           onContextMenu={onMenu}
           onKeyDown={onNameKey}
           style={{ borderLeftColor: channel.color }}
-          className={`h-6 w-32 min-w-0 truncate rounded-sm border border-l-4 bg-panel-2 px-1.5 text-left text-xs font-bold tracking-wide uppercase hover:bg-line ${
-            selected ? "border-amber text-ink" : "border-line text-ink-dim"
-          } ${channel.muted ? "opacity-50" : ""}`}
+          className={`flex h-6 w-32 min-w-0 shrink-0 items-center gap-1 rounded-sm border border-l-4 px-1.5 text-left text-xs tracking-wide uppercase hover:bg-line ${
+            selected ? "border-ink bg-panel-2 font-bold" : "border-line bg-panel"
+          } ${channel.muted ? "text-ink-mute line-through" : "text-ink"}`}
         >
-          {channel.name}
+          <span className="truncate">{channel.name}</span>
+          {missing && (
+            <span
+              className="shrink-0 text-amber no-underline"
+              title="Sample missing: it was deleted from My samples"
+            >
+              ⚠
+            </span>
+          )}
+          {usesSample && channel.sampleId === null && (
+            <span className="shrink-0 font-mono text-2xs font-normal text-ink-mute normal-case">
+              empty
+            </span>
+          )}
+          {soloed && (
+            <span
+              title="Soloed"
+              className="ml-auto shrink-0 rounded-sm bg-amber px-1 font-mono text-2xs font-bold text-well"
+            >
+              S
+            </span>
+          )}
         </button>
       )}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         aria-expanded={expanded}
         aria-label={`${channel.name} settings`}
         title="Channel settings"
         onClick={() => toggleExpanded(channelId)}
-        className={`h-6 w-4 shrink-0 text-xs hover:text-ink ${expanded ? "text-amber" : "text-ink-dim"}`}
+        className={`size-5! shrink-0 px-0! text-sm ${expanded ? "text-ink!" : ""}`}
       >
-        {expanded ? "▴" : "▾"}
-      </button>
+        ⚙
+      </Button>
+      <Button
+        variant="ghost"
+        aria-label={`Open ${channel.name} in piano roll`}
+        title="Open in piano roll (F7)"
+        onClick={() => openPianoRoll(channelId)}
+        className="size-5! shrink-0 px-0!"
+      >
+        <svg aria-hidden="true" viewBox="0 0 12 10" className="size-3">
+          <rect x="0.5" y="0.5" width="11" height="9" fill="none" stroke="currentColor" />
+          <path d="M3.5 1v8M6 1v8M8.5 1v8" stroke="currentColor" />
+          <path d="M2.5 1h2v5h-2zM7.5 1h2v5h-2z" fill="currentColor" />
+        </svg>
+      </Button>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute right-1 hidden rounded-sm bg-amber px-1 font-mono text-2xs font-bold text-well uppercase [[data-drop=replace]>&]:block"
+      >
+        Replace sound
+      </span>
     </div>
   );
 }

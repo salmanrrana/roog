@@ -1,26 +1,44 @@
 import { describe, expect, test } from "vitest";
 import { createStepNote } from "@/core/defaults";
 import { STEP_TICKS } from "@/core/timing";
-import { CELL_W, ROW_H, cellAt, isStepsOnly, litSteps, rowAt, stepsBetween } from "./grid";
+import {
+  MAX_CELL_W,
+  MIN_CELL_W,
+  ROW_H,
+  cellAt,
+  fitCellWidth,
+  isStepsOnly,
+  litSteps,
+  rowAt,
+  stepsBetween,
+} from "./grid";
 
 describe("cellAt", () => {
-  const grid = { rows: 3, steps: 16 };
+  const W = 30;
+  const grid = { rows: 3, steps: 16, cellWidth: W };
 
   test("maps a point to its row and step", () => {
-    expect(cellAt(CELL_W * 2 + 1, ROW_H * 1 + 1, grid)).toEqual({ row: 1, step: 2 });
+    expect(cellAt(W * 2 + 1, ROW_H + 1, grid)).toEqual({ row: 1, step: 2 });
     expect(cellAt(0, 0, grid)).toEqual({ row: 0, step: 0 });
   });
 
   test("misses outside the grid unless clamped", () => {
-    expect(cellAt(CELL_W * 16, 0, grid)).toBeNull();
+    expect(cellAt(0, -1, grid)).toBeNull();
+    expect(cellAt(W * 16, 0, grid)).toBeNull();
     expect(cellAt(-1, 0, grid)).toBeNull();
     expect(cellAt(0, ROW_H * 3, grid)).toBeNull();
-    expect(cellAt(CELL_W * 99, -50, grid, true)).toEqual({ row: 0, step: 15 });
+    expect(cellAt(W * 99, -50, grid, true)).toEqual({ row: 0, step: 15 });
   });
 
   test("an empty rack has no cells", () => {
-    expect(cellAt(0, 0, { rows: 0, steps: 16 }, true)).toBeNull();
+    expect(cellAt(0, 0, { rows: 0, steps: 16, cellWidth: W }, true)).toBeNull();
   });
+});
+
+test("fitCellWidth fills the space within its limits", () => {
+  expect(fitCellWidth(800, 16)).toBe(50);
+  expect(fitCellWidth(2000, 16)).toBe(MAX_CELL_W);
+  expect(fitCellWidth(600, 64)).toBe(MIN_CELL_W);
 });
 
 test("rowAt returns -1 outside the rows", () => {

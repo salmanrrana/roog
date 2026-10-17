@@ -6,11 +6,20 @@ import { addNotes, findPattern, removeNotes, updateNotes } from "@/core/commands
 import type { Note } from "@/core/schema";
 import { edit, useProjectStore } from "@/state/project-store";
 import { useUiStore } from "@/state/ui-store";
+import { BEAT_TICKS } from "@/core/timing";
 import { SNAP_TICKS } from "@/ui/timeline";
-import { type NoteChanges, copyNotes, duplicateNotes, moveNotes, quantizeNotes } from "./commands";
+import {
+  type NoteChanges,
+  copyNotes,
+  duplicateNotes,
+  moveNotes,
+  noteSpan,
+  quantizeNotes,
+} from "./commands";
 import { NO_SELECTION, setSelection, usePianoRoll } from "./store";
 
-let clipboard: readonly Note[] = [];
+/** Copied notes, and how far the next paste shifts them (grows by one span per paste). */
+let clipboard: { readonly notes: readonly Note[]; offset: number } = { notes: [], offset: 0 };
 
 function target() {
   const { patternId, channelId } = useUiStore.getState();
@@ -27,10 +36,15 @@ function change(build: (notes: readonly Note[]) => NoteChanges, allWhenNone = fa
   if (notes.length > 0) edit((p) => updateNotes(p, t.patternId, t.channelId, build(notes)));
 }
 
+/** Add notes, select them, and scroll right if the first one starts out of view. */
 function place(notes: readonly Note[], patternId: string, channelId: string): void {
   if (notes.length === 0) return;
   edit((p) => addNotes(p, patternId, channelId, notes));
   setSelection(new Set(notes.map((note) => note.id)));
+  const first = Math.min(...notes.map((note) => note.tick));
+  const { scrollTick, pxPerTick, viewWidth } = usePianoRoll.getState();
+  if (first < scrollTick || first > scrollTick + viewWidth / pxPerTick)
+    usePianoRoll.setState({ scrollTick: Math.max(0, first - 2 * BEAT_TICKS) });
 }
 
 export function selectAll(): void {
@@ -48,7 +62,7 @@ export function deleteSelection(): void {
 
 export function copySelection(): void {
   const t = target();
-  if (t && t.chosen.length > 0) clipboard = t.chosen;
+  if (t && t.chosen.length > 0) clipboard = { notes: t.chosen, offset: noteSpan(t.chosen) };
 }
 
 export function cutSelection(): void {
@@ -56,10 +70,15 @@ export function cutSelection(): void {
   deleteSelection();
 }
 
-/** Paste at the copied positions, selected, so arrows can move them right away. */
+/**
+ * Paste right after the copied block, selected, so arrows can move them right away.
+ * Each further paste lands one span later, so repeated pastes stack to the right.
+ */
 export function paste(): void {
   const t = target();
-  if (t) place(copyNotes(clipboard), t.patternId, t.channelId);
+  if (!t || clipboard.notes.length === 0) return;
+  place(copyNotes(clipboard.notes, clipboard.offset), t.patternId, t.channelId);
+  clipboard.offset += noteSpan(clipboard.notes);
 }
 
 export function duplicateSelection(): void {

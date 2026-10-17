@@ -17,6 +17,7 @@ import {
   hitClip,
   isFree,
   moveDelta,
+  moveIsFree,
   resizedLength,
 } from "./clips";
 import { drawTimeline } from "./draw";
@@ -28,6 +29,7 @@ import {
   scrollView,
   setSelection,
   usePlaylistView,
+  WHEEL_NOTCH_PX,
 } from "./view-store";
 
 /** Pixels at a clip's right edge that grab the resize handle. */
@@ -78,6 +80,10 @@ export function Timeline() {
   const selected = usePlaylistView((s) => s.selected);
   const songEnd = useProjectStore((s) => songLength(s.project));
   const animate = useUiStore((s) => s.playing && s.playMode === "song");
+  // Pattern mode while playing: clips of the looping pattern get a hot top bar.
+  const playingPatternId = useUiStore((s) =>
+    s.playing && s.playMode === "pattern" ? s.patternId : null,
+  );
 
   const wrap = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -94,14 +100,22 @@ export function Timeline() {
       patterns: patternMap,
       selected,
       songEnd,
+      playingPatternId,
     }),
   );
 
-  const { ref: overlayRef, redraw: redrawOverlay } = useCanvas((ctx, { height }) => {
+  // Overlay: song playhead (paging the view to follow it) and the marquee.
+  const { ref: overlayRef, redraw: redrawOverlay } = useCanvas((ctx, { width, height }) => {
     const colors = themeColors();
-    const view = usePlaylistView.getState();
+    let view = usePlaylistView.getState();
     const playhead = engine.getPlayhead();
     if (playhead?.scope.kind === "song") {
+      const headX = tickToX(view, playhead.tick);
+      if (headX > width * 0.9 || headX < 0) {
+        const scrollTick = Math.max(0, playhead.tick - (width * 0.1) / view.pxPerTick);
+        usePlaylistView.setState({ scrollTick });
+        view = usePlaylistView.getState();
+      }
       const x = Math.round(tickToX(view, playhead.tick));
       ctx.fillStyle = colors.hot;
       ctx.fillRect(x - 1, 0, 2, height);
@@ -112,11 +126,11 @@ export function Timeline() {
       const x1 = tickToX(view, Math.max(box.tick0, box.tick1));
       const y0 = RULER_HEIGHT + Math.min(box.row0, box.row1) * ROW_HEIGHT - view.scrollY;
       const y1 = RULER_HEIGHT + Math.max(box.row0, box.row1) * ROW_HEIGHT - view.scrollY;
-      ctx.fillStyle = colors.amber;
-      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = colors.ink;
+      ctx.globalAlpha = 0.08;
       ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = colors.amber;
+      ctx.strokeStyle = colors.ink;
       ctx.lineWidth = 1;
       ctx.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0, y1 - y0);
     }
@@ -129,9 +143,12 @@ export function Timeline() {
     if (!element) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const scale = event.deltaMode === 1 ? 16 : 1;
       const rect = element.getBoundingClientRect();
-      const rowCount = useProjectStore.getState().project.playlist.tracks.length;
+      // Lines (Firefox mice) and pages become pixels: 3 lines ≈ one notch.
+      const scale =
+        event.deltaMode === 1 ? WHEEL_NOTCH_PX / 3 : event.deltaMode === 2 ? rect.width : 1;
+      const { project } = useProjectStore.getState();
+      const rowCount = project.playlist.tracks.length;
       scrollView(
         {
           deltaX: event.deltaX * scale,
@@ -141,6 +158,7 @@ export function Timeline() {
         },
         event.clientX - rect.left - HEADER_WIDTH,
         Math.max(0, (rowCount + 1) * ROW_HEIGHT - (rect.height - RULER_HEIGHT)),
+        songLength(project),
       );
     };
     element.addEventListener("wheel", onWheel, { passive: false });
@@ -276,6 +294,9 @@ export function Timeline() {
           gridOf(event),
         );
         if (delta.ticks === current.last.ticks && delta.rows === current.last.rows) return;
+        // Never overlap: a blocked spot leaves the clips at their last free position.
+        const { clips: liveClips } = useProjectStore.getState().project.playlist;
+        if (!moveIsFree(liveClips, current.group, delta, current.trackIds)) return;
         current.last = delta;
         current.clickId = null;
         edit((p) => {
@@ -357,9 +378,13 @@ export function Timeline() {
     >
       <TrackHeaders />
       <div className="relative min-w-0">
+        {/* Geometry for tools and e2e tests. */}
         <canvas
           ref={gridRef}
           aria-label="Playlist timeline"
+          data-bar-width={BAR_TICKS * pxPerTick}
+          data-row-height={ROW_HEIGHT}
+          data-ruler-height={RULER_HEIGHT}
           className="absolute inset-0 size-full touch-none"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -373,6 +398,11 @@ export function Timeline() {
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 size-full"
         />
+        {clips.length === 0 && (
+          <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-4 text-center text-sm text-ink-dim">
+            Pick a pattern on the left, then click a track to place it.
+          </p>
+        )}
       </div>
     </div>
   );

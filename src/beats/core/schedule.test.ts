@@ -1,6 +1,12 @@
 import { describe, expect, test } from "vitest";
 import type { Note, Project } from "./schema";
-import { collectEvents, patternLength, scopeLength, songLength } from "./schedule";
+import {
+  collectEvents,
+  patternLength,
+  patternPlayheadTick,
+  scopeLength,
+  songLength,
+} from "./schedule";
 import { BAR_TICKS, STEP_TICKS } from "./timing";
 
 const note = (tick: number, length = STEP_TICKS, pitch = 60): Note => ({
@@ -33,13 +39,22 @@ function project(notes: Note[], extra: Partial<Project> = {}): Project {
         volume: 1,
         pan: 0,
         muted: false,
+        solo: false,
         mixerTrackId: "master",
       },
     ],
     patterns: [{ id: "p1", name: "P1", color: "#fff", steps: 16, notes: { kick: notes } }],
     playlist: { tracks: [track("t1"), track("t2")], clips: [] },
     mixer: {
-      master: { id: "master", name: "Master", volume: 1, pan: 0, muted: false, effects: [] },
+      master: {
+        id: "master",
+        name: "Master",
+        volume: 1,
+        pan: 0,
+        muted: false,
+        solo: false,
+        effects: [],
+      },
       inserts: [],
     },
     ...extra,
@@ -132,5 +147,35 @@ describe("song mode", () => {
     expect(ticks(collectEvents(p, song, BAR_TICKS * 2, BAR_TICKS * 2 + 1))).toEqual([
       BAR_TICKS * 2,
     ]);
+  });
+});
+
+describe("patternPlayheadTick", () => {
+  const clip = {
+    id: "c1",
+    patternId: "p1",
+    trackId: "t1",
+    start: BAR_TICKS,
+    length: BAR_TICKS * 2,
+  };
+  const withClip = project([note(0)], { playlist: { tracks: [track("t1")], clips: [clip] } });
+
+  test("pattern mode: only the looping pattern has a playhead", () => {
+    expect(patternPlayheadTick(withClip, null, "p1")).toBeNull();
+    expect(patternPlayheadTick(withClip, { tick: 30, scope: pattern }, "p1")).toBe(30);
+    expect(
+      patternPlayheadTick(
+        withClip,
+        { tick: 30, scope: { kind: "pattern", patternId: "p2" } },
+        "p1",
+      ),
+    ).toBeNull();
+  });
+
+  test("song mode: inside a clip, wrapped to the pattern length", () => {
+    expect(patternPlayheadTick(withClip, { tick: 10, scope: song }, "p1")).toBeNull();
+    expect(patternPlayheadTick(withClip, { tick: BAR_TICKS + 10, scope: song }, "p1")).toBe(10);
+    expect(patternPlayheadTick(withClip, { tick: BAR_TICKS * 2 + 5, scope: song }, "p1")).toBe(5);
+    expect(patternPlayheadTick(withClip, { tick: BAR_TICKS * 3, scope: song }, "p1")).toBeNull();
   });
 });

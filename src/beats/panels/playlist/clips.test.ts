@@ -8,6 +8,7 @@ import {
   hitClip,
   isFree,
   moveDelta,
+  moveIsFree,
   pasteClips,
   resizedLength,
 } from "./clips";
@@ -104,4 +105,27 @@ test("pasteClips adds shifted copies with new ids", () => {
     length: source.length,
   });
   expect(copy?.id).not.toBe(source.id);
+});
+
+describe("moveIsFree", () => {
+  const trackIds = ["t0", "t1", "t2"];
+  const clips = [clip("a", "t0", 0, BAR_TICKS * 4), clip("b", "t1", 0), clip("c", "t1", BAR_TICKS)];
+  const grabA = [{ id: "a", start: 0, row: 0 }];
+
+  test("blocks a move onto another clip", () => {
+    expect(moveIsFree(clips, grabA, { ticks: 0, rows: 1 }, trackIds)).toBe(false);
+  });
+
+  test("allows a move into empty space", () => {
+    expect(moveIsFree(clips, grabA, { ticks: BAR_TICKS * 2, rows: 1 }, trackIds)).toBe(true);
+    expect(moveIsFree(clips, grabA, { ticks: 0, rows: 2 }, trackIds)).toBe(true);
+  });
+
+  test("clips moved together never block each other", () => {
+    const group = [
+      { id: "b", start: 0, row: 1 },
+      { id: "c", start: BAR_TICKS, row: 1 },
+    ];
+    expect(moveIsFree(clips, group, { ticks: BAR_TICKS, rows: 0 }, trackIds)).toBe(true);
+  });
 });

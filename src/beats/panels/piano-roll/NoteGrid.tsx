@@ -1,7 +1,7 @@
 import { type PointerEvent, useEffect, useEffectEvent, useRef } from "react";
 import { addNotes, findPattern, removeNotes, updateNotes } from "@/core/commands";
 import { createId } from "@/core/ids";
-import { patternLength } from "@/core/schedule";
+import { patternLength, patternPlayheadTick } from "@/core/schedule";
 import type { Note } from "@/core/schema";
 import { engine } from "@/engine";
 import { edit, useProjectStore } from "@/state/project-store";
@@ -16,6 +16,7 @@ import {
   NO_SELECTION,
   type Tool,
   ZOOM_LIMITS,
+  centerOnPitch,
   scrollRows,
   setSelection,
   usePianoRoll,
@@ -63,17 +64,11 @@ const CURSOR: Record<Tool, string> = {
   select: "default",
 };
 
-/** Where the transport is inside this pattern, in pattern mode or inside a song clip. */
-function playheadTick(patternId: string): number | null {
-  const head = engine.getPlayhead();
-  if (!head) return null;
-  if (head.scope.kind === "pattern") return head.scope.patternId === patternId ? head.tick : null;
-  const { project } = useProjectStore.getState();
-  const pattern = findPattern(project, patternId);
-  const clip = project.playlist.clips.find(
-    (c) => c.patternId === patternId && head.tick >= c.start && head.tick < c.start + c.length,
-  );
-  return pattern && clip ? (head.tick - clip.start) % patternLength(pattern) : null;
+/** Middle pitch of the notes, or C5 when there are none. */
+function centerPitch(notes: readonly Note[]): number {
+  if (notes.length === 0) return 60;
+  const pitches = notes.map((note) => note.pitch);
+  return Math.round((Math.min(...pitches) + Math.max(...pitches)) / 2);
 }
 
 function point(event: PointerEvent<HTMLElement>) {
@@ -83,10 +78,17 @@ function point(event: PointerEvent<HTMLElement>) {
 
 /**
  * The note canvas for one pattern + channel: draws notes and ghosts, and handles
- * every pointer tool. Drags commit to the store only when the snapped result
+ * every pointer tool. Clicking a note with any tool but Delete selects it. Opens
+ * centered on the channel's notes, and shows a hint when it has none. Drags commit to the store only when the snapped result
  * changes, under one gesture id, so each drag is a single undo step.
  */
-export function NoteGrid({ patternId, channelId }: { patternId: string; channelId: string }) {
+export function NoteGrid({
+  patternId,
+  channelId,
+}: {
+  readonly patternId: string;
+  readonly channelId: string;
+}) {
   const pattern = useProjectStore((s) => findPattern(s.project, patternId));
   const channels = useProjectStore((s) => s.project.channels);
   const playing = useUiStore((s) => s.playing);
@@ -97,13 +99,15 @@ export function NoteGrid({ patternId, channelId }: { patternId: string; channelI
   const scrollY = usePianoRoll((s) => s.scrollY);
   const rowHeight = usePianoRoll((s) => s.rowHeight);
   const selected = usePianoRoll((s) => s.selected);
+  const showGhosts = usePianoRoll((s) => s.showGhosts);
 
   const view: RollView = { scrollTick, pxPerTick, scrollY, rowHeight };
   const notes = pattern?.notes[channelId] ?? EMPTY;
-  const color = channels.find((channel) => channel.id === channelId)?.color ?? "#fff";
-  const ghosts = channels
-    .filter((channel) => channel.id !== channelId)
-    .map((channel) => ({ color: channel.color, notes: pattern?.notes[channel.id] ?? EMPTY }));
+  const channel = channels.find((c) => c.id === channelId);
+  const color = channel?.color ?? "#fff";
+  const ghosts = showGhosts
+    ? channels.filter((c) => c.id !== channelId).map((c) => pattern?.notes[c.id] ?? EMPTY)
+    : [];
   const loopEnd = pattern ? patternLength(pattern) : 0;
 
   const drag = useRef<Drag | null>(null);
@@ -115,13 +119,10 @@ export function NoteGrid({ patternId, channelId }: { patternId: string; channelI
   );
   const { ref: overlayRef, redraw: redrawOverlay } = useCanvas((ctx, size) => {
     const current = drag.current;
-    drawOverlay(
-      ctx,
-      size,
-      view,
-      playheadTick(patternId),
-      current?.kind === "marquee" ? current.rect : null,
-    );
+    const head = playing
+      ? patternPlayheadTick(useProjectStore.getState().project, engine.getPlayhead(), patternId)
+      : null;
+    drawOverlay(ctx, size, view, head, current?.kind === "marquee" ? current.rect : null);
   });
   useFrame(() => redrawOverlay(), playing);
 
@@ -168,7 +169,7 @@ export function NoteGrid({ patternId, channelId }: { patternId: string; channelI
         setSelection(next);
         return;
       }
-      if (!inSelection) setSelection(tool === "select" ? new Set([note.id]) : NO_SELECTION);
+      if (!inSelection) setSelection(new Set([note.id]));
       usePianoRoll.setState({ lastLength: note.length, lastVelocity: note.velocity });
       const group = inSelection ? notes.filter((n) => selected.has(n.id)) : [note];
       drag.current =
@@ -332,6 +333,24 @@ export function NoteGrid({ patternId, channelId }: { patternId: string; channelI
     }
   });
 
+  // Track the grid's size for centering and paste scrolling (on resize only, not per frame).
+  useEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() =>
+      usePianoRoll.setState({ viewWidth: element.clientWidth, viewHeight: element.clientHeight }),
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  // Open where the notes are: center on this channel's notes when the channel or pattern changes.
+  useEffect(() => {
+    const height = box.current?.clientHeight ?? 0;
+    const current = findPattern(useProjectStore.getState().project, patternId);
+    if (height > 0) centerOnPitch(centerPitch(current?.notes[channelId] ?? EMPTY), height);
+  }, [patternId, channelId]);
+
   useEffect(() => {
     const element = box.current;
     if (!element) return;
@@ -345,6 +364,7 @@ export function NoteGrid({ patternId, channelId }: { patternId: string; channelI
       <canvas ref={gridRef} className="absolute inset-0 size-full" />
       <canvas
         ref={overlayRef}
+        aria-label="Note grid"
         className="absolute inset-0 size-full touch-none"
         style={{ cursor: CURSOR[tool] }}
         onPointerDown={onPointerDown}
@@ -353,6 +373,12 @@ export function NoteGrid({ patternId, channelId }: { patternId: string; channelI
         onPointerCancel={onPointerUp}
         onContextMenu={(event) => event.preventDefault()}
       />
+      {notes.length === 0 && (
+        <p className="pointer-events-none absolute inset-0 m-auto h-fit w-fit max-w-[90%] rounded-full bg-well/70 px-3 py-1 text-center text-sm text-ink-dim">
+          No notes on {channel?.name ?? "this channel"} in {pattern?.name ?? "this pattern"} yet.
+          Click the grid to draw one.
+        </p>
+      )}
     </div>
   );
 }

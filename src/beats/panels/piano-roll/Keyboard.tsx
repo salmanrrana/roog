@@ -5,15 +5,21 @@ import { drawKeyboard } from "./draw";
 import { yToPitch } from "./geometry";
 import { scrollRows, usePianoRoll } from "./store";
 
-/** The key column. Click (or drag across) keys to audition the channel. */
-export function Keyboard({ channelId }: { channelId: string }) {
+/** The key column. Click (or drag across) keys to audition the channel; the held key lights in its color. */
+export function Keyboard({
+  channelId,
+  color,
+}: {
+  readonly channelId: string;
+  readonly color: string;
+}) {
   const scrollY = usePianoRoll((s) => s.scrollY);
   const rowHeight = usePianoRoll((s) => s.rowHeight);
   const view = { scrollTick: 0, pxPerTick: 1, scrollY, rowHeight };
   const held = useRef<number | null>(null);
 
   const { ref: keysRef, redraw } = useCanvas((ctx, size) =>
-    drawKeyboard(ctx, size, view, held.current),
+    drawKeyboard(ctx, size, view, held.current, color),
   );
 
   function press(event: PointerEvent<HTMLCanvasElement>) {

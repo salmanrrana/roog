@@ -1,11 +1,19 @@
-import { type DragEvent, type MouseEvent, type ReactNode, useRef } from "react";
+import {
+  type DragEvent,
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { addChannel } from "@/core/commands";
 import type { FactorySound } from "@/core/contracts";
 import { engine } from "@/engine";
 import { type SampleMeta, deleteSample, importAudioFiles, useSampleLibrary } from "@/persistence";
 import { factorySounds } from "@/sounds/factory";
-import { edit } from "@/state/project-store";
+import { edit, useProjectStore } from "@/state/project-store";
 import { selectChannel } from "@/state/ui-store";
+import { Button } from "@/ui/Button";
 import { SAMPLE_MIME } from "@/ui/dnd";
 import { openMenu } from "@/ui/menu";
 import { toast } from "@/ui/toast";
@@ -16,15 +24,23 @@ const GROUPS = [
   { group: "fx", label: "FX" },
 ] as const satisfies readonly { group: FactorySound["group"]; label: string }[];
 
-/** Import picked or dropped files into "My samples". */
-async function importFiles(files: readonly File[]) {
-  const { length } = await importAudioFiles(files);
-  if (length > 0) toast(`Imported ${length} sample${length === 1 ? "" : "s"}`);
-}
+/** How long a previewed row flashes, matching the `animate-flash` keyframes. */
+const PREVIEW_FLASH_MS = 700;
 
 /** Add a sampler channel (the default instrument) playing the sound and select it. */
 function addToRack(sampleId: string, name: string) {
   selectChannel(edit((p) => addChannel(p, { name, sampleId })));
+}
+
+/** Delete a user sample, naming the channels that go silent, with an Undo action. */
+async function deleteWithUndo(sample: SampleMeta) {
+  const users = useProjectStore
+    .getState()
+    .project.channels.filter((channel) => channel.sampleId === sample.id)
+    .map((channel) => channel.name);
+  const restore = await deleteSample(sample.id);
+  const silent = users.length > 0 ? `. ${users.join(", ")} will go silent.` : "";
+  toast(`Deleted “${sample.name}”${silent}`, "info", { label: "Undo", run: () => void restore() });
 }
 
 interface Sound {
@@ -33,41 +49,71 @@ interface Sound {
 }
 
 /**
- * One browser entry. Click previews, double-click (or the + button) adds a
- * channel, drag onto the rack adds one or replaces a row's sample.
+ * One browser row: [▶ name ⠿ +]. Click or Enter previews (the row flashes),
+ * double-click or + adds a channel, drag onto the rack adds one or replaces a
+ * row's sample. The + is skipped by Tab; keyboard users add via the context menu.
  */
 function SoundItem({ sound, onDelete }: { readonly sound: Sound; readonly onDelete?: () => void }) {
+  const [previewing, setPreviewing] = useState(0);
+
+  useEffect(() => {
+    if (previewing === 0) return;
+    const timer = setTimeout(() => setPreviewing(0), PREVIEW_FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [previewing]);
+
+  function preview() {
+    engine.previewSample(sound.id);
+    setPreviewing((n) => n + 1);
+  }
+
   function onMenu(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
     openMenu({ x: event.clientX, y: event.clientY }, [
-      { label: "Preview", onSelect: () => engine.previewSample(sound.id) },
+      { label: "Preview", onSelect: preview },
       { label: "Add to rack", onSelect: () => addToRack(sound.id, sound.name) },
       ...(onDelete ? [{ label: "Delete sample", danger: true, onSelect: onDelete }] : []),
     ]);
   }
 
   return (
-    <li className="group flex items-center">
+    <li
+      className={`group flex h-7 items-center rounded-sm hover:bg-panel-2 ${previewing ? "animate-flash" : ""}`}
+    >
       <button
         type="button"
         draggable
         title="Click: preview · Double-click: add to rack · Drag onto the rack"
-        onClick={() => engine.previewSample(sound.id)}
+        onClick={preview}
         onDoubleClick={() => addToRack(sound.id, sound.name)}
         onContextMenu={onMenu}
         onDragStart={(event) => {
           event.dataTransfer.setData(SAMPLE_MIME, sound.id);
           event.dataTransfer.effectAllowed = "copy";
         }}
-        className="min-w-0 flex-1 cursor-grab truncate rounded-sm px-2 py-1 text-left text-xs text-ink-dim hover:bg-panel-2 hover:text-ink active:cursor-grabbing"
+        className="flex h-full min-w-0 flex-1 cursor-grab items-center gap-1.5 rounded-sm px-1.5 text-left text-xs text-ink active:cursor-grabbing"
       >
-        {sound.name}
+        <span
+          aria-hidden="true"
+          className={`text-2xs ${previewing ? "text-acid" : "text-ink-mute"}`}
+        >
+          ▶
+        </span>
+        <span className="min-w-0 flex-1 truncate">{sound.name}</span>
+        <span
+          aria-hidden="true"
+          className="text-xs text-ink-mute opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+        >
+          ⠿
+        </span>
       </button>
       <button
         type="button"
+        tabIndex={-1}
         aria-label={`Add ${sound.name} to the rack`}
+        title="Add to the rack (or double-click the sound)"
         onClick={() => addToRack(sound.id, sound.name)}
-        className="px-2 py-1 font-mono text-xs text-ink-dim opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 hover:text-acid focus:opacity-100"
+        className="mr-0.5 flex size-6 items-center justify-center rounded-sm font-mono text-xs text-ink-mute hover:bg-line hover:text-ink"
       >
         +
       </button>
@@ -75,69 +121,72 @@ function SoundItem({ sound, onDelete }: { readonly sound: Sound; readonly onDele
   );
 }
 
+/** A collapsible group of sounds, open by default. */
 function Group({ label, children }: { readonly label: string; readonly children: ReactNode }) {
   return (
     <details open className="group/details">
-      <summary className="cursor-pointer list-none px-2 py-1 font-mono text-[10px] font-bold tracking-widest text-ink-dim uppercase select-none hover:text-ink">
-        <span className="inline-block w-3 transition-transform group-open/details:rotate-90">
+      <summary className="caption flex cursor-pointer list-none items-center gap-1 px-2 py-1 select-none hover:bg-panel-2 hover:text-ink">
+        <span
+          aria-hidden="true"
+          className="inline-block w-3 transition-transform group-open/details:rotate-90"
+        >
           ›
         </span>
         {label}
       </summary>
-      <ul className="pb-1 pl-2">{children}</ul>
+      <ul className="px-1 pb-1">{children}</ul>
     </details>
   );
 }
 
-function deleteWithConfirm(sample: SampleMeta) {
-  if (window.confirm(`Delete "${sample.name}" from My samples? Channels using it go silent.`))
-    void deleteSample(sample.id);
-}
-
 /**
  * The left sidebar: factory sounds by group and the user's imported samples.
- * Import with the button or by dropping audio files anywhere on the browser.
+ * Import with the button or by dropping audio files anywhere on the browser;
+ * persistence shows the import toasts.
  */
 export function Browser() {
   const samples = useSampleLibrary((s) => s.samples);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [dropping, setDropping] = useState(false);
 
   function onDragOver(event: DragEvent<HTMLDivElement>) {
     if (!event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
-    event.currentTarget.setAttribute("data-drop", "");
+    setDropping(true);
   }
 
-  function clearDrop(event: DragEvent<HTMLDivElement>) {
+  function onDragLeave(event: DragEvent<HTMLDivElement>) {
     const to = event.relatedTarget;
-    if (!(to instanceof Node) || !event.currentTarget.contains(to))
-      event.currentTarget.removeAttribute("data-drop");
+    if (!(to instanceof Node) || !event.currentTarget.contains(to)) setDropping(false);
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
     if (!event.dataTransfer.types.includes("Files")) return;
     event.preventDefault();
-    event.currentTarget.removeAttribute("data-drop");
-    void importFiles([...event.dataTransfer.files]);
+    setDropping(false);
+    void importAudioFiles([...event.dataTransfer.files]);
   }
 
   return (
     <div
-      className="flex min-h-full flex-col gap-1 pb-4 data-drop:bg-acid/10 data-drop:outline-2 data-drop:-outline-offset-2 data-drop:outline-acid"
+      data-drop={dropping || undefined}
+      className="relative flex min-h-full flex-col gap-1 pb-4 data-drop:bg-acid/10 data-drop:outline-2 data-drop:-outline-offset-2 data-drop:outline-acid"
+      onDragEnter={onDragOver}
       onDragOver={onDragOver}
-      onDragLeave={clearDrop}
+      onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-panel px-2 py-1.5">
-        <h2 className="font-display text-base leading-none tracking-wider uppercase">Browser</h2>
-        <button
-          type="button"
-          onClick={() => fileInput.current?.click()}
-          className="rounded-sm border border-line bg-panel-2 px-2 py-0.5 text-[11px] font-bold tracking-wider uppercase hover:border-acid hover:text-acid"
-        >
-          Import
-        </button>
+      <header className="sticky top-0 z-10 border-b border-line bg-panel px-2 py-1.5">
+        <div className="flex items-center justify-between">
+          <h2 className="panel-title">Browser</h2>
+          <Button size="sm" onClick={() => fileInput.current?.click()}>
+            Import
+          </Button>
+        </div>
+        <p className="mt-1 text-2xs text-ink-dim">
+          Click to hear · drag onto the rack · + adds a channel
+        </p>
         <input
           ref={fileInput}
           type="file"
@@ -147,7 +196,7 @@ export function Browser() {
           onChange={(event) => {
             const files = [...(event.currentTarget.files ?? [])];
             event.currentTarget.value = "";
-            void importFiles(files);
+            void importAudioFiles(files);
           }}
         />
       </header>
@@ -164,14 +213,21 @@ export function Browser() {
 
       <Group label="My samples">
         {samples.map((sample) => (
-          <SoundItem key={sample.id} sound={sample} onDelete={() => deleteWithConfirm(sample)} />
+          <SoundItem key={sample.id} sound={sample} onDelete={() => void deleteWithUndo(sample)} />
         ))}
         {samples.length === 0 && (
-          <li className="px-2 py-1 text-[11px] leading-snug text-ink-dim">
-            Drop audio files here or hit Import.
+          <li className="px-1.5 py-1 text-xs text-ink-dim">
+            Drop audio files here or click Import.
           </li>
         )}
       </Group>
+
+      {dropping && (
+        // Pinned to the bottom of the visible sidebar (mt-auto when the list is short, sticky when it scrolls).
+        <p className="caption pointer-events-none sticky bottom-2 z-20 mx-auto mt-auto w-fit rounded-sm bg-panel px-2 py-1 text-acid">
+          Drop audio files to import
+        </p>
+      )}
     </div>
   );
 }

@@ -21,7 +21,8 @@ Requires Node 22.12+ and pnpm (`corepack enable` picks the pinned version).
 ## Beats (`beats.html`)
 
 - **Channel rack**: click or drag across steps to paint, right-click to erase. 1–0 mutes
-  a channel, Shift+1–0 solos it. Double-click a channel name to open its piano roll.
+  a channel, Shift+1–0 solos it. Double-click a channel name (or F2) to rename it; the
+  piano icon on each row opens its piano roll. Press ? for every shortcut.
 - **Piano roll** (F7): P draw, B paint, D delete, E select. Alt bypasses snap, Ctrl+Q
   quantizes, arrows transpose and nudge.
 - **Playlist** (F5): pick a pattern on the left, click the timeline to place it, drag to
@@ -60,6 +61,9 @@ To add a module, write a `ModuleDef` (see `src/studio/types.js`) and list it in
 - `src/beats/**/*.test.ts`: Beats pure logic: timing, scheduler, transport, schema and
   migrations, commands, undo, WAV and project-file encoding, editor geometry.
 - `tests/legacy/`: behaviour checks for the Rack and Studio pages.
+- `tests/e2e/`: Playwright user flows for Beats (make a beat, build a song and export a
+  WAV, bring in sounds, mixer, projects and keys). `pnpm test:e2e` starts its own Vite on
+  port 5299. First run: `pnpm exec playwright install chromium`.
 
 ## Deploy
 

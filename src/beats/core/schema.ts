@@ -45,6 +45,8 @@ export const channelSchema = z.object({
   volume,
   pan,
   muted: z.boolean(),
+  /** Solo is kept apart from mute: while any channel is soloed, the others are silent. */
+  solo: z._default(z.boolean(), false),
   /** Mixer track this channel feeds: MASTER_ID or an insert id. */
   mixerTrackId: z.string(),
 });
@@ -91,6 +93,8 @@ export const mixerTrackSchema = z.object({
   volume,
   pan,
   muted: z.boolean(),
+  /** Solo is kept apart from mute: while any insert is soloed, the others are silent. */
+  solo: z._default(z.boolean(), false),
   effects: z.array(effectSlotSchema),
 });
 

@@ -1,7 +1,5 @@
-import { useState } from "react";
-import { addPattern, setBpm, setSwing } from "@/core/commands";
+import { addPattern, setSwing } from "@/core/commands";
 import { MASTER_ID } from "@/core/defaults";
-import { MAX_BPM, MIN_BPM } from "@/core/timing";
 import { engine } from "@/engine";
 import { ProjectMenu } from "@/panels/projects";
 import {
@@ -13,144 +11,124 @@ import {
   useProjectStore,
 } from "@/state/project-store";
 import { selectPattern, setPlayMode, stepPattern, useUiStore } from "@/state/ui-store";
+import { Button, Select } from "@/ui/Button";
 import { Knob } from "@/ui/Knob";
-import { LedButton } from "@/ui/LedButton";
 import { Meter } from "@/ui/Meter";
+import { Segmented } from "@/ui/Segmented";
 import { SWING_SPEC } from "@/ui/specs";
+import { BpmField } from "./BpmField";
+import { PositionReadout } from "./PositionReadout";
+import { ProjectTitle, SaveStatusBadge } from "./ProjectTitle";
 
-const groupClass = "flex items-center gap-1.5";
-const smallButton =
-  "grid h-7 min-w-7 place-items-center rounded-sm border border-line bg-panel-2 px-1.5 font-mono text-xs text-ink hover:border-ink-dim disabled:opacity-40";
+const groupClass = "flex shrink-0 items-center gap-1 2xl:gap-1.5";
 
-/** Top bar: transport, tempo, swing, pattern picker, history, project menu, master meter. */
+function Divider({ className = "" }: { readonly className?: string }) {
+  return <span aria-hidden="true" className={`h-6 w-px shrink-0 bg-line ${className}`} />;
+}
+
+/**
+ * Top bar, one row from 1024px up:
+ * brand | Play · mode · position | BPM · swing | pattern picker | undo · redo |
+ * (right) project name + save status · Project menu | master meter.
+ * Below 2xl (1536px) the Pattern and Master captions hide and the meter, pattern select and gaps
+ * shrink. Below xl (1280px) the position readout, the "BEATS" wordmark and the master meter
+ * (also on the Mixer's master strip) hide so it fits 1024.
+ */
 export function TransportBar() {
   const playing = useUiStore((s) => s.playing);
   const playMode = useUiStore((s) => s.playMode);
   const swing = useProjectStore((s) => s.project.swing);
-  const projectName = useProjectStore((s) => s.project.name);
   const canUndo = useProjectStore(selectCanUndo);
   const canRedo = useProjectStore(selectCanRedo);
 
   return (
-    <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b-2 border-hot bg-panel px-3 py-1.5">
-      <div className="flex items-baseline gap-1.5">
+    <header className="flex h-11 items-center gap-1 overflow-hidden border-b border-line bg-panel px-2 xl:gap-1.5 2xl:gap-3 2xl:px-3">
+      <div className="flex shrink-0 items-baseline gap-1.5">
         <span className="font-display text-2xl leading-none tracking-wide">ROOG</span>
-        <span className="font-display text-lg leading-none text-hot">BEATS</span>
+        <span className="font-display text-lg leading-none text-hot max-xl:hidden">BEATS</span>
       </div>
+      <Divider />
 
       <div className={groupClass}>
-        <LedButton
-          active={playing}
-          tone="hot"
+        <Button
           onClick={() => engine.togglePlay()}
-          title="Play / stop (Space)"
+          title={playing ? "Stop (Space)" : "Play (Space)"}
+          aria-label={playing ? "Stop" : "Play"}
+          className={`min-w-20 ${playing ? "border-hot! bg-hot! text-well!" : ""}`}
         >
+          <span aria-hidden="true">{playing ? "■" : "▶"}</span>
           {playing ? "Stop" : "Play"}
-        </LedButton>
-        <div role="radiogroup" aria-label="Play mode (L)" className="flex">
-          {(["pattern", "song"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              role="radio"
-              aria-checked={playMode === mode}
-              onClick={() => setPlayMode(mode)}
-              title="Pattern or song mode (L)"
-              className="border border-line px-2 py-1 font-mono text-xs uppercase first:rounded-l-sm last:rounded-r-sm aria-checked:border-amber aria-checked:bg-amber aria-checked:text-well"
-            >
-              {mode === "pattern" ? "Pat" : "Song"}
-            </button>
-          ))}
-        </div>
+        </Button>
+        <Segmented
+          label="Play mode"
+          value={playMode}
+          onChange={setPlayMode}
+          options={[
+            { value: "pattern", label: "Pattern", title: "Loop the selected pattern (L)" },
+            { value: "song", label: "Song", title: "Play the playlist from the start (L)" },
+          ]}
+        />
+        <PositionReadout />
       </div>
+      <Divider />
 
       <div className={groupClass}>
         <BpmField />
         <Knob
           spec={SWING_SPEC}
           value={swing}
-          size={28}
+          size={24}
+          layout="inline"
           onChange={(value, gesture) => edit((p) => setSwing(p, value), gesture)}
         />
       </div>
+      <Divider />
 
       <PatternPicker />
+      <Divider />
 
       <div className={groupClass}>
-        <button
-          type="button"
-          className={smallButton}
+        <Button
+          variant="ghost"
+          aria-label="Undo"
+          title="Undo (Ctrl+Z)"
+          className="w-7 px-0 text-base"
           onClick={undo}
           disabled={!canUndo}
-          title="Undo (Ctrl+Z)"
         >
           ↶
-        </button>
-        <button
-          type="button"
-          className={smallButton}
+        </Button>
+        <Button
+          variant="ghost"
+          aria-label="Redo"
+          title="Redo (Ctrl+Shift+Z)"
+          className="w-7 px-0 text-base"
           onClick={redo}
           disabled={!canRedo}
-          title="Redo (Ctrl+Shift+Z)"
         >
           ↷
-        </button>
+        </Button>
       </div>
 
-      <div className="ml-auto flex items-center gap-3">
-        <span className="max-w-48 truncate text-sm font-semibold text-ink-dim">{projectName}</span>
-        <ProjectMenu />
-        <Meter read={() => engine.readMeter(MASTER_ID)} className="h-3 w-24 rounded-xs" />
-        <nav className="flex gap-2 font-mono text-[11px] text-ink-dim uppercase">
-          <a className="hover:text-ink" href="./index.html">
-            Rack
-          </a>
-          <a className="hover:text-ink" href="./studio.html">
-            Studio
-          </a>
-        </nav>
+      <div className="ml-auto flex min-w-0 items-center gap-1.5 2xl:gap-3">
+        <div className="flex shrink-0 items-center gap-1">
+          <ProjectTitle />
+          <SaveStatusBadge />
+        </div>
+        <div className="shrink-0">
+          <ProjectMenu />
+        </div>
+        <Divider className="max-2xl:hidden" />
+        <div className="flex shrink-0 items-center gap-1.5 max-xl:hidden">
+          <span className="caption max-2xl:hidden">Master</span>
+          <Meter
+            read={() => engine.readMeter(MASTER_ID)}
+            title="Master level"
+            className="h-2.5 w-12 rounded-xs 2xl:w-24"
+          />
+        </div>
       </div>
     </header>
-  );
-}
-
-/** Tempo readout. Type and press Enter, or use the arrow keys (Shift = 10). */
-function BpmField() {
-  const bpm = useProjectStore((s) => s.project.bpm);
-  const [draft, setDraft] = useState<string | null>(null);
-
-  function commit() {
-    if (draft !== null) edit((p) => setBpm(p, Number(draft)));
-    setDraft(null);
-  }
-
-  return (
-    <label className="flex items-center gap-1.5 rounded-sm border border-line bg-well px-2 py-0.5">
-      <span className="font-mono text-[10px] text-ink-dim uppercase">BPM</span>
-      <input
-        type="text"
-        inputMode="decimal"
-        aria-label={`Tempo, ${MIN_BPM} to ${MAX_BPM} BPM`}
-        className="w-12 bg-transparent font-mono text-sm text-acid outline-none"
-        value={draft ?? String(bpm)}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={commit}
-        onKeyDown={(event) => {
-          const nudge = { ArrowUp: 1, ArrowDown: -1 }[event.key];
-          if (nudge !== undefined) {
-            event.preventDefault();
-            edit(
-              (p) => setBpm(p, Math.round(bpm) + nudge * (event.shiftKey ? 10 : 1)),
-              "bpm-nudge",
-            );
-          } else if (event.key === "Enter") event.currentTarget.blur();
-          else if (event.key === "Escape") {
-            setDraft(null);
-            event.currentTarget.blur();
-          }
-        }}
-      />
-    </label>
   );
 }
 
@@ -158,45 +136,55 @@ function BpmField() {
 function PatternPicker() {
   const patterns = useProjectStore((s) => s.project.patterns);
   const patternId = useUiStore((s) => s.patternId);
+  const color = patterns.find((pattern) => pattern.id === patternId)?.color;
 
   return (
     <div className={groupClass}>
-      <button
-        type="button"
-        className={smallButton}
-        onClick={() => stepPattern(-1)}
+      <span className="caption max-2xl:hidden">Pattern</span>
+      <Button
+        variant="ghost"
+        aria-label="Previous pattern"
         title="Previous pattern ([)"
+        className="w-6 px-0"
+        onClick={() => stepPattern(-1)}
       >
         ‹
-      </button>
-      <select
+      </Button>
+      <span
+        aria-hidden="true"
+        className="size-2.5 shrink-0 rounded-xs max-xl:hidden"
+        style={{ background: color }}
+      />
+      <Select
         aria-label="Pattern"
         value={patternId}
         onChange={(event) => selectPattern(event.target.value)}
-        className="h-7 max-w-40 rounded-sm border border-line bg-panel-2 px-1 text-sm"
+        className="max-w-24 2xl:max-w-40"
       >
         {patterns.map((pattern) => (
           <option key={pattern.id} value={pattern.id}>
             {pattern.name}
           </option>
         ))}
-      </select>
-      <button
-        type="button"
-        className={smallButton}
-        onClick={() => stepPattern(1)}
+      </Select>
+      <Button
+        variant="ghost"
+        aria-label="Next pattern"
         title="Next pattern (])"
+        className="w-6 px-0"
+        onClick={() => stepPattern(1)}
       >
         ›
-      </button>
-      <button
-        type="button"
-        className={smallButton}
+      </Button>
+      <Button
+        variant="ghost"
+        aria-label="New pattern"
         title="New pattern"
+        className="w-7 px-0"
         onClick={() => selectPattern(edit((p) => addPattern(p)))}
       >
         +
-      </button>
+      </Button>
     </div>
   );
 }

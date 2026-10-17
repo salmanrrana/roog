@@ -35,14 +35,35 @@ export const useUiStore = create<UiState>()(() => ({
   channelId: initialProject.channels[0]?.id ?? null,
 }));
 
+/**
+ * The id to select when `id` vanished from `before` → `after`: whatever now sits at its
+ * old index, else the last item. A different project (load) starts at the first.
+ */
+function neighborId(
+  before: readonly { readonly id: string }[],
+  after: readonly { readonly id: string }[],
+  id: string | null,
+  sameProject: boolean,
+): string | undefined {
+  const index = sameProject ? before.findIndex((item) => item.id === id) : 0;
+  return (after[Math.max(0, index)] ?? after.at(-1))?.id;
+}
+
 // Keep selections valid when patterns or channels disappear (delete, undo, load).
+// Deleting the selected one selects its neighbor, not the first.
 useProjectStore.subscribe(({ project }, previous) => {
   if (project === previous.project) return;
+  const old = previous.project;
+  const sameProject = project.id === old.id;
   const { patternId, channelId } = useUiStore.getState();
   if (!findPattern(project, patternId))
-    useUiStore.setState({ patternId: project.patterns[0]?.id ?? "" });
+    useUiStore.setState({
+      patternId: neighborId(old.patterns, project.patterns, patternId, sameProject) ?? "",
+    });
   if (channelId === null || !findChannel(project, channelId)) {
-    useUiStore.setState({ channelId: project.channels[0]?.id ?? null });
+    useUiStore.setState({
+      channelId: neighborId(old.channels, project.channels, channelId, sameProject) ?? null,
+    });
   }
 });
 

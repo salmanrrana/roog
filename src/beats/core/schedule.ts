@@ -4,6 +4,7 @@
  * that window. The realtime engine calls it every ~25 ms with a small lookahead
  * window; WAV export calls it once for the whole song. Pure and allocation-light.
  */
+import type { Playhead } from "./contracts";
 import type { Pattern, Project } from "./schema";
 import { BAR_TICKS, STEP_TICKS, ceilTo, swingTick } from "./timing";
 
@@ -149,4 +150,27 @@ function collectPattern(
       });
     }
   }
+}
+
+/**
+ * Where the playhead is inside one pattern, in pattern ticks, or null when that
+ * pattern isn't sounding: in pattern mode it must be the looping pattern; in song
+ * mode the playhead must be inside one of its clips (clips longer than the pattern repeat it).
+ */
+export function patternPlayheadTick(
+  project: Project,
+  head: Playhead | null,
+  patternId: string,
+): number | null {
+  if (!head) return null;
+  if (head.scope.kind === "pattern") return head.scope.patternId === patternId ? head.tick : null;
+  const pattern = project.patterns.find((item) => item.id === patternId);
+  if (!pattern) return null;
+  const clip = project.playlist.clips.find(
+    (item) =>
+      item.patternId === patternId &&
+      head.tick >= item.start &&
+      head.tick < item.start + item.length,
+  );
+  return clip ? (head.tick - clip.start) % patternLength(pattern) : null;
 }

@@ -1,6 +1,7 @@
 import { findPattern } from "@/core/commands";
 import { patternLength } from "@/core/schedule";
 import type { Note } from "@/core/schema";
+import { BAR_TICKS } from "@/core/timing";
 import { useProjectStore } from "@/state/project-store";
 import { useUiStore } from "@/state/ui-store";
 import { useHotkeys } from "@/ui/hotkeys";
@@ -26,7 +27,7 @@ const setTool = (tool: Tool) => () => usePianoRoll.setState({ tool });
 
 /**
  * FL-style piano roll for the selected pattern + channel: keyboard, note grid with
- * draw/paint/delete/select tools, ghost notes, velocity lane and playhead.
+ * draw/paint/delete/select tools, ghost-note outlines, velocity lane and playhead.
  */
 export function PianoRoll() {
   const patternId = useUiStore((s) => s.patternId);
@@ -64,6 +65,7 @@ export function PianoRoll() {
         channels={channels}
         channelId={channelId}
         patternName={pattern?.name ?? ""}
+        bars={pattern ? Math.ceil(patternLength(pattern) / BAR_TICKS) : 0}
         noteCount={notes.length}
       />
       {channelId === null ? (
@@ -74,10 +76,10 @@ export function PianoRoll() {
         <div className="grid min-h-0 flex-1 grid-cols-[64px_1fr] grid-rows-[20px_1fr_84px]">
           <div className="border-r border-b border-line bg-panel" />
           <Ruler loopEnd={pattern ? patternLength(pattern) : 0} />
-          <Keyboard channelId={channelId} />
+          <Keyboard channelId={channelId} color={color} />
           <NoteGrid patternId={patternId} channelId={channelId} />
-          <div className="grid place-items-center border-t border-r border-line bg-panel font-mono text-[10px] text-ink-dim uppercase">
-            Vel
+          <div className="grid place-items-center border-t border-r border-line bg-panel caption">
+            Velocity
           </div>
           <div className="border-t border-line">
             <VelocityLane patternId={patternId} channelId={channelId} notes={notes} color={color} />

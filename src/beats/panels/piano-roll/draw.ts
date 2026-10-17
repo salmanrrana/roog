@@ -6,7 +6,7 @@
 import type { Note } from "@/core/schema";
 import { BAR_TICKS, BEAT_TICKS } from "@/core/timing";
 import type { CanvasSize } from "@/ui/canvas";
-import { themeColors } from "@/ui/theme";
+import { CANVAS_FONT, themeColors } from "@/ui/theme";
 import { drawTimeGrid, tickToX, xToTick } from "@/ui/timeline";
 import { type RollView, type Rect, TOP_PITCH, isBlackKey, pitchName, pitchToY } from "./geometry";
 
@@ -23,13 +23,13 @@ export interface GridScene {
   readonly notes: readonly Note[];
   readonly color: string;
   readonly selected: ReadonlySet<string>;
-  /** Other channels' notes in the same pattern, drawn faint for reference. */
-  readonly ghosts: ReadonlyArray<{ readonly color: string; readonly notes: readonly Note[] }>;
+  /** Other channels' notes in the same pattern, drawn as outlines for reference. Empty when hidden. */
+  readonly ghosts: ReadonlyArray<readonly Note[]>;
   /** Pattern loop length in ticks; the area past it is dimmed. */
   readonly loopEnd: number;
 }
 
-/** Rows, time grid, loop end, ghost notes and the channel's notes. */
+/** Rows, time grid, dashed pattern end, ghost outlines and the channel's notes (selected ones outlined in ink). */
 export function drawGrid(ctx: CanvasRenderingContext2D, size: CanvasSize, scene: GridScene): void {
   const { width, height } = size;
   const { view } = scene;
@@ -55,9 +55,7 @@ export function drawGrid(ctx: CanvasRenderingContext2D, size: CanvasSize, scene:
   if (endX < width) {
     ctx.fillStyle = SHADE;
     ctx.fillRect(Math.max(0, endX), 0, width, height);
-    // Amber like the playlist's loop end; hot orange is reserved for the playhead.
-    ctx.fillStyle = colors.amber;
-    ctx.fillRect(Math.round(endX) - 1, 0, 2, height);
+    drawEndLine(ctx, endX, height, colors["ink-mute"]);
   }
 
   const fromTick = view.scrollTick;
@@ -68,23 +66,24 @@ export function drawGrid(ctx: CanvasRenderingContext2D, size: CanvasSize, scene:
     note.pitch >= low &&
     note.pitch <= high;
 
-  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = colors["ink-mute"];
+  ctx.lineWidth = 1;
   for (const ghost of scene.ghosts) {
-    ctx.fillStyle = ghost.color;
-    for (const note of ghost.notes) {
+    for (const note of ghost) {
       if (!visible(note)) continue;
-      const x = tickToX(view, note.tick);
-      ctx.fillRect(
-        x,
-        pitchToY(view, note.pitch) + 2,
-        note.length * view.pxPerTick,
+      const x = Math.round(tickToX(view, note.tick));
+      const w = Math.max(3, Math.round(note.length * view.pxPerTick) - 1);
+      ctx.strokeRect(
+        x + 0.5,
+        Math.round(pitchToY(view, note.pitch)) + 1.5,
+        w - 1,
         view.rowHeight - 4,
       );
     }
   }
 
   const labels = view.rowHeight >= 11;
-  ctx.font = `600 ${Math.min(10, view.rowHeight - 4)}px "JetBrains Mono", monospace`;
+  ctx.font = CANVAS_FONT.tiny;
   ctx.textBaseline = "middle";
   for (const note of scene.notes) {
     if (!visible(note)) continue;
@@ -95,14 +94,21 @@ export function drawGrid(ctx: CanvasRenderingContext2D, size: CanvasSize, scene:
     const selected = scene.selected.has(note.id);
     // Quiet notes fade but never vanish.
     ctx.globalAlpha = 0.45 + 0.55 * note.velocity;
-    ctx.fillStyle = selected ? colors.amber : scene.color;
+    ctx.fillStyle = scene.color;
     ctx.fillRect(x, y, w, h);
     ctx.globalAlpha = 1;
     ctx.fillStyle = SHADE;
     ctx.fillRect(x, y + h - 2, w, 2);
     if (w > 12) ctx.fillRect(x + w - 3, y + 2, 2, h - 4);
-    ctx.strokeStyle = selected ? colors.ink : colors.well;
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    if (selected) {
+      ctx.strokeStyle = colors.ink;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+      ctx.lineWidth = 1;
+    } else {
+      ctx.strokeStyle = colors.well;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    }
     if (labels && w > 28) {
       ctx.fillStyle = colors.well;
       ctx.fillText(pitchName(note.pitch), x + 4, y + h / 2);
@@ -110,7 +116,19 @@ export function drawGrid(ctx: CanvasRenderingContext2D, size: CanvasSize, scene:
   }
 }
 
-/** Playhead line and marquee rectangle, on the transparent overlay. */
+/** The 1px dashed end-of-pattern line. */
+function drawEndLine(ctx: CanvasRenderingContext2D, endX: number, height: number, color: string) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(Math.round(endX) + 0.5, 0);
+  ctx.lineTo(Math.round(endX) + 0.5, height);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/** Playhead line (only passed while playing) and marquee rectangle, on the transparent overlay. */
 export function drawOverlay(
   ctx: CanvasRenderingContext2D,
   { height }: CanvasSize,
@@ -128,30 +146,31 @@ export function drawOverlay(
     const y = Math.min(marquee.y0, marquee.y1);
     const w = Math.abs(marquee.x1 - marquee.x0);
     const h = Math.abs(marquee.y1 - marquee.y0);
-    ctx.globalAlpha = 0.14;
-    ctx.fillStyle = colors.amber;
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = colors.ink;
     ctx.fillRect(x, y, w, h);
     ctx.globalAlpha = 1;
-    ctx.strokeStyle = colors.amber;
+    ctx.strokeStyle = colors.ink;
     ctx.strokeRect(x + 0.5, y + 0.5, w, h);
   }
 }
 
-/** The keyboard column: white/black keys, C labels, and the held key lit. */
+/** The keyboard column: white/black keys, C labels, and the held key lit in the channel color. */
 export function drawKeyboard(
   ctx: CanvasRenderingContext2D,
   { width, height }: CanvasSize,
   view: RollView,
   held: number | null,
+  color: string,
 ): void {
   const colors = themeColors();
   const [low, high] = visiblePitches(view, height);
-  ctx.font = `700 ${Math.min(10, view.rowHeight - 3)}px "JetBrains Mono", monospace`;
+  ctx.font = CANVAS_FONT.label;
   ctx.textBaseline = "middle";
   for (let pitch = low; pitch <= high; pitch += 1) {
     const y = pitchToY(view, pitch);
     const black = isBlackKey(pitch);
-    ctx.fillStyle = pitch === held ? colors.hot : black ? colors.well : colors.ink;
+    ctx.fillStyle = pitch === held ? color : black ? colors.well : colors.ink;
     ctx.fillRect(0, y, black ? width * 0.62 : width, view.rowHeight);
     if (black && pitch !== held) {
       ctx.fillStyle = colors.ink;
@@ -161,14 +180,14 @@ export function drawKeyboard(
     ctx.fillRect(0, Math.round(y + view.rowHeight) - 1, width, pitch % 12 === 0 ? 2 : 1);
     if (pitch % 12 === 0 && view.rowHeight >= 9) {
       ctx.fillStyle = colors.well;
-      ctx.fillText(pitchName(pitch), width - 26, y + view.rowHeight / 2);
+      ctx.fillText(pitchName(pitch), width - 28, y + view.rowHeight / 2);
     }
   }
   ctx.fillStyle = colors.line;
   ctx.fillRect(width - 1, 0, 1, height);
 }
 
-/** Bar numbers and beat ticks above the grid, with the loop end marked. */
+/** Bar numbers and beat ticks above the grid, with a dashed line and "END" where the pattern loops. */
 export function drawRuler(
   ctx: CanvasRenderingContext2D,
   { width, height }: CanvasSize,
@@ -178,7 +197,7 @@ export function drawRuler(
   const colors = themeColors();
   ctx.fillStyle = colors.panel;
   ctx.fillRect(0, 0, width, height);
-  ctx.font = `700 10px "JetBrains Mono", monospace`;
+  ctx.font = CANVAS_FONT.bold;
   ctx.textBaseline = "middle";
   const first = Math.floor(view.scrollTick / BEAT_TICKS) * BEAT_TICKS;
   const last = xToTick(view, width);
@@ -194,18 +213,18 @@ export function drawRuler(
   }
   const endX = tickToX(view, loopEnd);
   if (endX < width) {
-    ctx.fillStyle = colors.amber;
-    ctx.beginPath();
-    ctx.moveTo(endX, height);
-    ctx.lineTo(endX - 6, 0);
-    ctx.lineTo(endX + 6, 0);
-    ctx.fill();
+    ctx.fillStyle = colors.panel;
+    ctx.fillRect(Math.round(endX), 0, 36, height - 1);
+    drawEndLine(ctx, endX, height, colors["ink-mute"]);
+    ctx.font = CANVAS_FONT.label;
+    ctx.fillStyle = colors["ink-dim"];
+    ctx.fillText("END", endX + 4, height / 2);
   }
   ctx.fillStyle = colors.line;
   ctx.fillRect(0, height - 1, width, 1);
 }
 
-/** Velocity stems for the channel's notes; selected ones in amber. */
+/** Velocity stems for the channel's notes (selected ones in ink), plus a "Velocity N%" readout while dragging. */
 export function drawVelocity(
   ctx: CanvasRenderingContext2D,
   { width, height }: CanvasSize,
@@ -213,6 +232,7 @@ export function drawVelocity(
   notes: readonly Note[],
   color: string,
   selected: ReadonlySet<string>,
+  readout: { readonly x: number; readonly y: number; readonly velocity: number } | null,
 ): void {
   const colors = themeColors();
   ctx.fillStyle = colors.well;
@@ -228,10 +248,22 @@ export function drawVelocity(
     const x = Math.round(tickToX(view, note.tick));
     if (x < -4 || x > width + 4) continue;
     const top = height - usable * note.velocity;
-    ctx.fillStyle = selected.has(note.id) ? colors.amber : color;
-    ctx.fillRect(x, top, 2, height - top);
-    ctx.fillRect(x - 2, top - 1, 7, 3);
+    ctx.fillStyle = selected.has(note.id) ? colors.ink : color;
+    ctx.fillRect(x, top, 3, height - top);
+    ctx.fillRect(x - 3, top - 1, 9, 3);
   }
   ctx.fillStyle = colors.line;
   ctx.fillRect(0, 0, width, 1);
+  if (readout) {
+    const text = `Velocity ${Math.round(readout.velocity * 100)}%`;
+    ctx.font = CANVAS_FONT.bold;
+    ctx.textBaseline = "middle";
+    const w = ctx.measureText(text).width + 8;
+    const x = Math.min(readout.x + 10, width - w);
+    const y = Math.max(9, Math.min(height - 9, readout.y));
+    ctx.fillStyle = colors.panel;
+    ctx.fillRect(x, y - 8, w, 16);
+    ctx.fillStyle = colors.ink;
+    ctx.fillText(text, x + 4, y);
+  }
 }

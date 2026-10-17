@@ -111,6 +111,26 @@ export function isFree(
   );
 }
 
+/**
+ * True when moving `group` by `delta` lands no clip on top of a clip that is not
+ * being moved. `trackIds` maps row index → track id. Used to block overlapping drags.
+ */
+export function moveIsFree(
+  clips: readonly Clip[],
+  group: readonly (Grab & { readonly id: string })[],
+  delta: { readonly ticks: number; readonly rows: number },
+  trackIds: readonly string[],
+): boolean {
+  const moving = new Set(group.map((grab) => grab.id));
+  const still = clips.filter((clip) => !moving.has(clip.id));
+  return group.every((grab) => {
+    const clip = clips.find((c) => c.id === grab.id);
+    const trackId = trackIds[grab.row + delta.rows];
+    if (!clip || trackId === undefined) return true;
+    return isFree(still, trackId, grab.start + delta.ticks, clip.length);
+  });
+}
+
 /** How far duplicate/paste shifts copies: the clips' extent rounded up to whole bars. */
 export function clipsSpan(clips: readonly Pick<Clip, "start" | "length">[]): number {
   if (clips.length === 0) return 0;

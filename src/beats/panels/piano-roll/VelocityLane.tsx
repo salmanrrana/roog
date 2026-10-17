@@ -8,27 +8,38 @@ import { tickToX } from "@/ui/timeline";
 import { drawVelocity } from "./draw";
 import { usePianoRoll } from "./store";
 
+/** Extra pixels on each side of a note that still count as touching it. */
 const REACH = 4;
+
+interface Drag {
+  readonly gesture: string;
+  lastX: number;
+  /** Pointer position and value for the "Vel N" readout. */
+  x: number;
+  y: number;
+  velocity: number;
+}
 
 /**
  * Velocity stems under the grid. Drag to draw velocities across every note the
- * pointer passes (only selected notes when there is a selection). One undo step per drag.
+ * pointer passes over, anywhere along its length (only selected notes when there
+ * is a selection). One undo step per drag; a "Vel N" readout follows the pointer.
  */
 export function VelocityLane(props: {
-  patternId: string;
-  channelId: string;
-  notes: readonly Note[];
-  color: string;
+  readonly patternId: string;
+  readonly channelId: string;
+  readonly notes: readonly Note[];
+  readonly color: string;
 }) {
   const { patternId, channelId, notes, color } = props;
   const scrollTick = usePianoRoll((s) => s.scrollTick);
   const pxPerTick = usePianoRoll((s) => s.pxPerTick);
   const selected = usePianoRoll((s) => s.selected);
   const view = { scrollTick, pxPerTick, scrollY: 0, rowHeight: 1 };
-  const drag = useRef<{ gesture: string; lastX: number } | null>(null);
+  const drag = useRef<Drag | null>(null);
 
-  const { ref: laneRef } = useCanvas((ctx, size) =>
-    drawVelocity(ctx, size, view, notes, color, selected),
+  const { ref: laneRef, redraw } = useCanvas((ctx, size) =>
+    drawVelocity(ctx, size, view, notes, color, selected, drag.current),
   );
 
   function paint(event: PointerEvent<HTMLCanvasElement>) {
@@ -36,39 +47,44 @@ export function VelocityLane(props: {
     if (!current) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
-    const velocity =
-      Math.round(Math.min(1, Math.max(0, 1 - (event.clientY - rect.top) / rect.height)) * 100) /
-      100;
-    const from = Math.min(x, current.lastX) - REACH;
-    const to = Math.max(x, current.lastX) + REACH;
-    current.lastX = x;
+    const y = event.clientY - rect.top;
+    const velocity = Math.round(Math.min(1, Math.max(0, 1 - y / rect.height)) * 100) / 100;
+    const from = Math.min(x, current.lastX);
+    const to = Math.max(x, current.lastX);
+    Object.assign(current, { lastX: x, x, y, velocity });
     const changes = new Map<string, { velocity: number }>();
     for (const note of notes) {
-      const noteX = tickToX(view, note.tick);
-      if (noteX < from || noteX > to || note.velocity === velocity) continue;
+      const left = tickToX(view, note.tick) - REACH;
+      const right = tickToX(view, note.tick + note.length) + REACH;
+      if (right < from || left > to || note.velocity === velocity) continue;
       if (selected.size > 0 && !selected.has(note.id)) continue;
       changes.set(note.id, { velocity });
     }
     if (changes.size > 0)
       edit((p) => updateNotes(p, patternId, channelId, changes), current.gesture);
+    redraw();
+  }
+
+  function end() {
+    drag.current = null;
+    redraw();
   }
 
   return (
     <canvas
       ref={laneRef}
+      aria-label="Velocity"
       className="size-full cursor-ns-resize touch-none"
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.currentTarget.setPointerCapture(event.pointerId);
-        drag.current = {
-          gesture: createId(),
-          lastX: event.clientX - event.currentTarget.getBoundingClientRect().left,
-        };
+        const x = event.clientX - event.currentTarget.getBoundingClientRect().left;
+        drag.current = { gesture: createId(), lastX: x, x, y: 0, velocity: 0 };
         paint(event);
       }}
       onPointerMove={paint}
-      onPointerUp={() => (drag.current = null)}
-      onPointerCancel={() => (drag.current = null)}
+      onPointerUp={end}
+      onPointerCancel={end}
     />
   );
 }

@@ -1,18 +1,27 @@
 import { useState } from "react";
-import { addPattern, clonePattern, removePattern, updatePattern } from "@/core/commands";
-import { PALETTE } from "@/core/defaults";
+import {
+  addPattern,
+  clonePattern,
+  removePattern,
+  uniqueName,
+  updatePattern,
+} from "@/core/commands";
+import { SWATCHES } from "@/core/defaults";
 import { patternLength } from "@/core/schedule";
 import { BAR_TICKS } from "@/core/timing";
 import { edit, useProjectStore } from "@/state/project-store";
 import { selectPattern, useUiStore } from "@/state/ui-store";
+import { Button } from "@/ui/Button";
 import { openMenu } from "@/ui/menu";
-import { RenameField } from "./RenameField";
+import { RenameField } from "@/ui/RenameField";
+import { toastWithUndo } from "@/ui/toast";
 
-const COLOR_NAMES = ["Orange", "Amber", "Lime", "Mint", "Sky", "Indigo", "Violet", "Pink"];
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
  * Pattern picker. The selected pattern is both what the rack/piano roll edit
- * and the playlist brush (what a click on the timeline places).
+ * and the playlist brush (what a click on the timeline places). Right-click for
+ * rename / clone / color / delete; deleting also removes its clips, with Undo.
  */
 export function PatternList() {
   const patterns = useProjectStore((s) => s.project.patterns);
@@ -24,6 +33,10 @@ export function PatternList() {
   }
 
   function openPatternMenu(at: { x: number; y: number }, patternId: string) {
+    const { project } = useProjectStore.getState();
+    const pattern = project.patterns.find((p) => p.id === patternId);
+    if (!pattern) return;
+    const clipCount = project.playlist.clips.filter((c) => c.patternId === patternId).length;
     openMenu(at, [
       { label: "Rename", onSelect: () => setRenaming(patternId) },
       {
@@ -38,18 +51,24 @@ export function PatternList() {
         onSelect: () =>
           openMenu(
             at,
-            PALETTE.map((color, index) => ({
-              label: COLOR_NAMES[index] ?? color,
+            SWATCHES.map(({ name, color }) => ({
+              label: name,
+              checked: color === pattern.color,
               onSelect: () => edit((p) => updatePattern(p, patternId, { color })),
             })),
           ),
       },
       "separator",
       {
-        label: "Delete",
+        label: clipCount > 0 ? `Delete (${plural(clipCount, "clip")})` : "Delete",
         danger: true,
         disabled: patterns.length <= 1,
-        onSelect: () => edit((p) => removePattern(p, patternId)),
+        ...(patterns.length <= 1 && { hint: "A project needs at least one pattern" }),
+        onSelect: () => {
+          edit((p) => removePattern(p, patternId));
+          const clips = clipCount > 0 ? ` and its ${plural(clipCount, "clip")}` : "";
+          toastWithUndo(`Deleted ${pattern.name}${clips}`);
+        },
       },
     ]);
   }
@@ -57,16 +76,17 @@ export function PatternList() {
   return (
     <div className="flex min-h-0 flex-col border-r border-line bg-panel">
       <div className="flex items-center justify-between border-b border-line px-2 py-1">
-        <span className="font-display text-sm tracking-wider text-ink uppercase">Patterns</span>
-        <button
-          type="button"
+        <span className="panel-title">Patterns</span>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={add}
           aria-label="Add pattern"
           title="Add pattern"
-          className="rounded-sm border border-line bg-panel-2 px-2 font-mono text-sm font-bold text-acid hover:border-acid"
+          className="font-mono text-sm"
         >
           +
-        </button>
+        </Button>
       </div>
       <ul className="min-h-0 flex-1 overflow-y-auto py-1">
         {patterns.map((pattern) => {
@@ -78,13 +98,24 @@ export function PatternList() {
                   <RenameField
                     label="Pattern name"
                     value={pattern.name}
-                    onRename={(name) => edit((p) => updatePattern(p, pattern.id, { name }))}
+                    onRename={(name) =>
+                      edit((p) =>
+                        updatePattern(p, pattern.id, {
+                          // Keep names unique so the picker, rack header and hints stay unambiguous.
+                          name: uniqueName(
+                            name,
+                            p.patterns.filter((x) => x.id !== pattern.id).map((x) => x.name),
+                          ),
+                        }),
+                      )
+                    }
                     onDone={() => setRenaming(null)}
                   />
                 </div>
               ) : (
                 <button
                   type="button"
+                  aria-label={pattern.name}
                   aria-pressed={active}
                   onClick={() => selectPattern(pattern.id)}
                   onDoubleClick={() => setRenaming(pattern.id)}
@@ -95,16 +126,17 @@ export function PatternList() {
                   onKeyDown={(event) => {
                     if (event.key === "F2") setRenaming(pattern.id);
                   }}
-                  className={`flex w-full items-center gap-2 rounded-sm border px-1.5 py-1 text-left text-xs font-bold uppercase ${active ? "border-amber bg-panel-2 text-ink" : "border-transparent text-ink-dim hover:bg-panel-2 hover:text-ink"}`}
+                  title="Double-click or F2 to rename · right-click for more"
+                  className={`flex w-full items-center gap-2 rounded-sm border px-1.5 py-1 text-left text-xs text-ink ${active ? "border-ink bg-panel-2" : "border-transparent hover:bg-panel-2"}`}
                 >
                   <span
                     aria-hidden="true"
-                    className="h-4 w-2 shrink-0 rounded-[1px]"
+                    className="h-4 w-3 shrink-0 rounded-[2px]"
                     style={{ background: pattern.color }}
                   />
                   <span className="min-w-0 flex-1 truncate">{pattern.name}</span>
-                  <span className="font-mono text-[10px] font-normal text-ink-dim">
-                    {patternLength(pattern) / BAR_TICKS}
+                  <span className="shrink-0 font-mono text-2xs text-ink-dim">
+                    {plural(patternLength(pattern) / BAR_TICKS, "bar")}
                   </span>
                 </button>
               )}

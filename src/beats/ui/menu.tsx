@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useRef } from "react";
+import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { create } from "zustand";
 
 export interface MenuItem {
@@ -8,9 +8,14 @@ export interface MenuItem {
   readonly shortcut?: string;
   readonly danger?: boolean;
   readonly disabled?: boolean;
+  /** Check state. When any item in a menu sets it, every item gets a ✓ column. */
+  readonly checked?: boolean;
+  /** Second line in small dim text, e.g. what the item does. */
+  readonly hint?: string;
 }
 
-export type MenuEntry = MenuItem | "separator";
+/** An item, a divider, or a non-interactive caption row (skipped by arrow keys). */
+export type MenuEntry = MenuItem | "separator" | { readonly heading: string };
 
 interface OpenMenu {
   readonly x: number;
@@ -40,6 +45,18 @@ export function closeMenu(): void {
 export function MenuHost() {
   const open = useMenuStore((s) => s.open);
   const menu = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
+
+  // Measure the real menu and keep it inside the viewport.
+  useLayoutEffect(() => {
+    const node = menu.current;
+    if (!open || !node) return setPlace(null);
+    const { width, height } = node.getBoundingClientRect();
+    setPlace({
+      left: Math.max(4, Math.min(open.x, window.innerWidth - width - 4)),
+      top: Math.max(4, Math.min(open.y, window.innerHeight - height - 4)),
+    });
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +76,9 @@ export function MenuHost() {
   }, [open]);
 
   if (!open) return null;
+  const hasChecks = open.entries.some(
+    (entry) => typeof entry === "object" && "checked" in entry && entry.checked !== undefined,
+  );
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const delta = { ArrowDown: 1, ArrowUp: -1 }[event.key];
@@ -79,13 +99,18 @@ export function MenuHost() {
       onContextMenu={(event) => event.preventDefault()}
       className="fixed z-50 min-w-48 rounded-sm border border-line bg-panel-2 py-1 shadow-2xl shadow-black/60"
       style={{
-        left: `min(${open.x}px, calc(100vw - 13rem))`,
-        top: `min(${open.y}px, calc(100vh - ${open.entries.length * 1.9 + 0.5}rem))`,
+        left: place?.left ?? open.x,
+        top: place?.top ?? open.y,
+        visibility: place ? "visible" : "hidden",
       }}
     >
       {open.entries.map((entry, index) =>
         entry === "separator" ? (
           <hr key={index} className="my-1 border-line" />
+        ) : "heading" in entry ? (
+          <p key={index} className="caption px-3 pt-2 pb-0.5">
+            {entry.heading}
+          </p>
         ) : (
           <button
             key={index}
@@ -96,11 +121,19 @@ export function MenuHost() {
               closeMenu();
               entry.onSelect();
             }}
-            className={`flex w-full items-center justify-between gap-6 px-3 py-1 text-left text-sm outline-none hover:bg-panel focus:bg-panel disabled:opacity-40 ${entry.danger ? "text-rec" : "text-ink"}`}
+            className={`flex w-full items-start gap-2 px-3 py-1 text-left text-sm outline-none hover:bg-panel focus:bg-panel disabled:cursor-not-allowed disabled:text-ink-mute ${entry.danger ? "text-rec" : "text-ink"}`}
           >
-            {entry.label}
+            {hasChecks && (
+              <span aria-hidden="true" className="w-4 shrink-0">
+                {entry.checked ? "✓" : ""}
+              </span>
+            )}
+            <span className="flex min-w-0 flex-1 flex-col">
+              {entry.label}
+              {entry.hint && <span className="text-2xs text-ink-dim">{entry.hint}</span>}
+            </span>
             {entry.shortcut && (
-              <kbd className="font-mono text-[10px] text-ink-dim">{entry.shortcut}</kbd>
+              <kbd className="ml-4 font-mono text-2xs leading-5 text-ink-dim">{entry.shortcut}</kbd>
             )}
           </button>
         ),

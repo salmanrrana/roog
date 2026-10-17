@@ -31,10 +31,15 @@ export async function sampleIdOf(bytes: ArrayBuffer): Promise<string> {
  * Rejects (with a readable message) when the file isn't audio the browser can decode.
  */
 export async function importSample(file: File): Promise<SampleMeta> {
+  return (await addSample(file)).sample;
+}
+
+/** importSample, plus whether the file was new (`added`) or already in the library. */
+async function addSample(file: File): Promise<{ sample: SampleMeta; added: boolean }> {
   const bytes = await file.arrayBuffer();
   const id = await sampleIdOf(bytes);
   const existing = useSampleLibrary.getState().samples.find((sample) => sample.id === id);
-  if (existing) return existing;
+  if (existing) return { sample: existing, added: false };
 
   // A one-sample offline context only decodes; it never touches the audio device.
   // decodeAudioData detaches its input, so give it a copy.
@@ -52,28 +57,39 @@ export async function importSample(file: File): Promise<SampleMeta> {
     blob: new Blob([bytes], { type: file.type }),
   };
   await storeSample(stored);
-  return withoutBlob(stored);
+  return { sample: withoutBlob(stored), added: true };
 }
 
 const AUDIO_FILE = /\.(wav|mp3|ogg|oga|flac|aiff?|m4a|aac|opus|webm)$/i;
 
 /**
- * Import picked or dropped files into the library, in order. Non-audio files and
- * failures are skipped with an error toast each; returns what was imported.
+ * Import picked or dropped files into the library, in order, and report it: one toast
+ * for the new ones ("Imported 2 samples"), one for files already in the library, and
+ * an error toast per file that isn't audio or fails. Returns every sample that is now
+ * in the library (new and already known), in input order.
  */
 export async function importAudioFiles(files: readonly File[]): Promise<SampleMeta[]> {
   const imported: SampleMeta[] = [];
+  const known: SampleMeta[] = [];
+  let added = 0;
   for (const file of files) {
     if (!file.type.startsWith("audio/") && !AUDIO_FILE.test(file.name)) {
       toast(`${file.name} isn't an audio file`, "error");
       continue;
     }
     try {
-      imported.push(await importSample(file));
+      const result = await addSample(file);
+      imported.push(result.sample);
+      if (result.added) added += 1;
+      else known.push(result.sample);
     } catch (error) {
       toast(error instanceof Error ? error.message : `Couldn't import ${file.name}`, "error");
     }
   }
+  if (added > 0) toast(`Imported ${added} sample${added === 1 ? "" : "s"}`);
+  const [only] = known;
+  if (known.length === 1 && only) toast(`“${only.name}” is already in My samples`);
+  else if (known.length > 1) toast(`${known.length} files are already in My samples`);
   return imported;
 }
 
@@ -82,12 +98,20 @@ export async function getSampleBlob(id: string): Promise<Blob | undefined> {
   return (await (await db()).get("samples", id))?.blob;
 }
 
-/** Remove a sample from the library. Channels that still use it go silent. */
-export async function deleteSample(id: string): Promise<void> {
-  await (await db()).delete("samples", id);
+/**
+ * Remove a sample from the library. Channels that still use it go silent. Returns a
+ * function that puts it back (file included), for an Undo toast.
+ */
+export async function deleteSample(id: string): Promise<() => Promise<void>> {
+  const database = await db();
+  const row = await database.get("samples", id);
+  await database.delete("samples", id);
   useSampleLibrary.setState((state) => ({
     samples: state.samples.filter((sample) => sample.id !== id),
   }));
+  return async () => {
+    if (row) await storeSample(row);
+  };
 }
 
 /** Write a sample row and list it (used by import and by .roogbeats files). */

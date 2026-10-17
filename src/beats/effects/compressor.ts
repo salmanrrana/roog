@@ -5,8 +5,15 @@ import { createSmoother, dbToGain } from "./smooth";
 export const compressor = defineEffect({
   name: "Compressor",
   params: {
-    threshold: { label: "Thresh", min: -60, max: 0, default: -18, step: 0.5, unit: "dB" },
-    ratio: { label: "Ratio", min: 1, max: 20, default: 4, curve: "exp" },
+    threshold: { label: "Threshold", min: -60, max: 0, default: -18, step: 0.5, unit: "dB" },
+    ratio: {
+      label: "Ratio",
+      min: 1,
+      max: 20,
+      default: 4,
+      curve: "exp",
+      format: (v) => `${v.toFixed(1)}:1`,
+    },
     attack: { label: "Attack", min: 0.001, max: 0.5, default: 0.01, curve: "exp", unit: "s" },
     release: { label: "Release", min: 0.02, max: 1, default: 0.15, curve: "exp", unit: "s" },
     knee: { label: "Knee", min: 0, max: 30, default: 6, step: 0.5, unit: "dB" },
