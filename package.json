@@ -1,30 +1,61 @@
 {
   "name": "roog",
-  "version": "0.1.0",
-  "description": "Plain HTML/CSS/JS scaffold for the ROOG browser eurorack.",
+  "version": "0.2.0",
+  "description": "ROOG: a browser eurorack, a playable modular synth, and an FL-style beat maker.",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "prepare": "node tools/install-hooks.mjs",
-    "check:staged": "node tools/check-staged.mjs",
-    "lint": "eslint src scripts tools eslint.config.mjs",
-    "format:check": "prettier --check package.json eslint.config.mjs tools/*.mjs",
-    "check:fast": "npm run lint && npm run format:check && node scripts/smoke-test.mjs --skip-build",
-    "dev": "node scripts/dev-server.mjs",
-    "build": "node scripts/build.mjs",
-    "test": "node scripts/smoke-test.mjs",
-    "check": "npm test && npm run lint"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:fast": "pnpm lint && pnpm typecheck && pnpm test",
+    "check": "pnpm check:fast && pnpm format:check && pnpm build",
+    "check:staged": "node tools/check-staged.mjs"
   },
   "keywords": [
     "eurorack",
     "synthesizer",
+    "beat-maker",
     "web-audio"
   ],
   "license": "UNLICENSED",
+  "dependencies": {
+    "idb": "^8.0.4",
+    "immer": "^11.1.21",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7",
+    "zustand": "^5.0.15"
+  },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "eslint": "^9.39.1",
-    "globals": "^16.5.0",
-    "prettier": "^3.8.2"
+    "@babel/core": "^7.29.0",
+    "@eslint/js": "^10.0.1",
+    "@rolldown/plugin-babel": "^0.2.4",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   }
 }

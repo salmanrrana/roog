@@ -1,20 +1,40 @@
 # ROOG
 
-ROOG is a browser-based eurorack simulation built with plain HTML, CSS, and JavaScript.
+Three browser instruments in one site:
+
+- **Rack** (`index.html`): a eurorack patch bay. Plain JS.
+- **Studio** (`studio.html`): a playable modular synth. Plain JS.
+- **Beats** (`beats.html`): an FL Studio-style beat maker (channel rack, piano roll,
+  playlist, mixer) that saves everything on your machine. React + TypeScript.
 
 ## Commands
 
-- `npm run dev` starts the local static dev server at `http://localhost:5173`.
-- `npm run build` copies the deployable static site into `dist/`.
-- `npm run check:fast` lints and runs the rack/audio assertions without building.
-- `npm test` performs its own build before the smoke assertions.
+Requires Node 22.12+ and pnpm (`corepack enable` picks the pinned version).
 
-Run `npm install` once to enable the tracked pre-commit hook. It checks staged
-source with Prettier before running the fast project check.
-The existing smoke harness keeps its hand formatting to avoid mixing its small
-build-control change with a whole-file rewrite.
-- `npm test` runs the scaffold smoke test.
-- `npm run check` runs build and smoke validation.
+- `pnpm install` installs dependencies and enables the pre-commit hook.
+- `pnpm dev` starts Vite at `http://localhost:5173` (all three pages).
+- `pnpm build` builds every page into `dist/`; `pnpm preview` serves it.
+- `pnpm typecheck`, `pnpm lint`, `pnpm test` (Vitest), `pnpm format:check`.
+- `pnpm check:fast` runs lint + typecheck + tests (the pre-commit hook runs this on
+  the staged snapshot, plus Prettier on staged files). `pnpm check` adds format and build.
+
+## Beats (`beats.html`)
+
+- **Channel rack**: click or drag across steps to paint, right-click to erase. 1–0 mutes
+  a channel, Shift+1–0 solos it. Double-click a channel name to open its piano roll.
+- **Piano roll** (F7): P draw, B paint, D delete, E select. Alt bypasses snap, Ctrl+Q
+  quantizes, arrows transpose and nudge.
+- **Playlist** (F5): pick a pattern on the left, click the timeline to place it, drag to
+  move, drag the right edge to repeat it. L switches between pattern and song mode.
+- **Mixer** (F9): every channel gets its own insert with fader, pan, mute/solo and effects
+  (filter, EQ, delay, reverb, drive, compressor).
+- **Sounds**: a synthesized kit ships built in; drop your own audio files on the browser
+  or the rack.
+- **Saving**: autosaves to this browser (IndexedDB). The project menu opens and creates
+  projects, exports/imports `.roogbeats` files (your samples included) and renders WAV.
+
+How it is built, the rules for keeping it fast, and how to add an instrument, effect,
+sound or view: [`docs/beats-architecture.md`](docs/beats-architecture.md).
 
 ## Studio (`studio.html`)
 
@@ -35,13 +55,12 @@ A playable modular synth. Hit POWER and the default patch plays itself.
 To add a module, write a `ModuleDef` (see `src/studio/types.js`) and list it in
 `src/studio/modules/index.js`.
 
+## Tests
+
+- `src/beats/**/*.test.ts`: Beats pure logic: timing, scheduler, transport, schema and
+  migrations, commands, undo, WAV and project-file encoding, editor geometry.
+- `tests/legacy/`: behaviour checks for the Rack and Studio pages.
+
 ## Deploy
 
-Netlify uses `netlify.toml`:
-
-- build command: `npm run build`
-- publish directory: `dist`
-
-The current baseline renders a placeholder rack shell backed by a small module registry,
-standard module panel renderer, typed port metadata, and a lazy Web Audio graph host that
-future module, patching, and layout tickets can plug into.
+Netlify (`netlify.toml`) runs `pnpm run build` on Node 22 and publishes `dist/`.

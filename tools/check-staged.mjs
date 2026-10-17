@@ -16,7 +16,7 @@ const changed = names("ACMRD");
 if (changed.length === 0) process.exit(0);
 
 const formatted = names("ACMR").filter((file) =>
-  /\.(?:css|html|js|json|mjs)$/.test(file),
+  /\.(?:css|html|js|json|mjs|ts|tsx|md)$/.test(file),
 );
 const root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
   encoding: "utf8",
@@ -37,7 +37,7 @@ try {
       { cwd: snapshot, stdio: "inherit" },
     );
   }
-  execFileSync("npm", ["run", "check:fast"], {
+  execFileSync("pnpm", ["run", "check:fast"], {
     cwd: snapshot,
     stdio: "inherit",
   });

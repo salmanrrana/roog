@@ -1,0 +1,8 @@
+{
+  "overrides": [
+    {
+      "files": ["src/beats/**", "*.ts"],
+      "options": { "printWidth": 100 }
+    }
+  ]
+}
