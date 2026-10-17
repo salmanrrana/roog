@@ -1,23 +1,23 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "vitest";
 import {
   euclid,
   quantizeSemitone,
   registerValue,
   scaleDegree,
   turingStep,
-} from "../src/studio/music.js";
+} from "../../src/studio/music.js";
 import {
   RACK,
   canPatch,
   decodePatch,
   encodePatch,
   layoutRows,
-} from "../src/studio/patch.js";
-import { fromNorm, toNorm } from "../src/studio/panel.js";
-import { createTransport } from "../src/studio/transport.js";
-import { catalog } from "../src/studio/modules/index.js";
-import { presets } from "../src/studio/presets.js";
+} from "../../src/studio/patch.js";
+import { fromNorm, toNorm } from "../../src/studio/panel.js";
+import { createTransport } from "../../src/studio/transport.js";
+import { catalog } from "../../src/studio/modules/index.js";
+import { presets } from "../../src/studio/presets.js";
 
 test("quantizer snaps to the scale and keeps octaves", () => {
   assert.equal(quantizeSemitone(6, "major"), 5);

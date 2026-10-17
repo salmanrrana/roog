@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/*
+ * ROOG Beats theme. The single source of truth for colors and fonts: Tailwind
+ * classes (bg-panel, text-hot...) and canvas code (ui/theme.ts) both read these.
+ * PRODUCT.md: Moog legibility, Death By Audio attitude. Loud color only where it
+ * carries signal or state.
+ */
+@theme static {
+  --color-well: oklch(14% 0.01 264);
+  --color-panel: oklch(19% 0.012 264);
+  --color-panel-2: oklch(24% 0.014 264);
+  --color-line: oklch(34% 0.014 264);
+  --color-ink: oklch(95% 0.012 92);
+  --color-ink-dim: oklch(72% 0.014 264);
+  /* Playhead, play button, active edits. */
+  --color-hot: oklch(68% 0.21 40);
+  /* Selection and current mode. */
+  --color-amber: oklch(80% 0.16 75);
+  /* LEDs on, lit steps, meters. */
+  --color-acid: oklch(88% 0.2 125);
+  /* Clipping and destructive actions. */
+  --color-rec: oklch(64% 0.23 27);
+  --color-focus: oklch(74% 0.17 250);
+
+  --font-display: "Anton", "Arial Narrow", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--color-well);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    overscroll-behavior: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
+}

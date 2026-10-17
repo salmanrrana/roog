@@ -1,2 +1,14 @@
-# Existing smoke harness uses the repository's established hand formatting.
-scripts/smoke-test.mjs
+dist/
+pnpm-lock.yaml
+.netlify/
+.claude/
+.impeccable/
+plans/
+# Legacy rack page keeps its original hand formatting.
+index.html
+src/app.js
+src/audio-graph-host.js
+src/module-framework.js
+src/rack-shell.js
+src/styles.css
+tests/legacy/rack.test.js
